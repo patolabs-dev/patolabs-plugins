@@ -1,8 +1,9 @@
 {
   "activation": {
-    "kind": "bootstrap"
+    "kind": "migration",
+    "manifest_digest": "sha256:d60e78a1ac3e9dfb24be4e0da4b4adccb6206c9dfdfa6a17c461ccb904987241"
   },
-  "configuration_digest": "sha256:76ebcd0057a427e1351e5f3eed586703904758e6ba1b63b0c7e14708e9b49522",
+  "configuration_digest": "sha256:1d68866bd8ffbebdbe32780d24fb55a81d2c25a3f20abb1970966dd2ee3d47cf",
   "project": {
     "id": "8",
     "key": "PLP"
