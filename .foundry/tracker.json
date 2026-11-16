@@ -3,13 +3,13 @@
     "kind": "migration",
     "manifest_digest": "sha256:d60e78a1ac3e9dfb24be4e0da4b4adccb6206c9dfdfa6a17c461ccb904987241"
   },
-  "configuration_digest": "sha256:177cca49ad0506315dc0caf47f7f97fb431ea38cd4a2a7c19265930999936647",
+  "configuration_digest": "sha256:1d68866bd8ffbebdbe32780d24fb55a81d2c25a3f20abb1970966dd2ee3d47cf",
   "project": {
     "id": "8",
     "key": "PLP"
   },
-  "registry_binding_digest": "sha256:264fa81560d530068548186a4a51f1c01f9e1b6c9cb47fdc157fbf44ba1cc8f3",
-  "repository": "github.com/patobiskoto/patolabs-plugins",
+  "registry_binding_digest": "sha256:8f82c92310fd3d936b09407d82556d187c8d4a015c1be0e8355eb1191a74b2f2",
+  "repository": "github.com/patolabs-dev/patolabs-plugins",
   "tracker": "devhub",
   "version": 2
 }
