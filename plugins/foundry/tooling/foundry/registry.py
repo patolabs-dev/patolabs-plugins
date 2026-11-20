@@ -159,6 +159,10 @@ def path() -> str:
     return os.path.join(data_dir(), "registry.json")
 
 
+class ProjectIdentityMismatchError(ValueError):
+    """The provider read the project but its coordinates are foreign or contradictory."""
+
+
 class RegistryFileError(ValueError):
     """The global registry file is unreadable as a registry (PAT-63).
 
@@ -1453,8 +1457,13 @@ def rebind_repository_binding(
         )
     repo = repo_basename(str(root), use_env=False)
     with _cutover_lock():
-        marker = _strict_marker_snapshot(root, moved_ok=True)
-        assert marker is not None
+        marker = _strict_marker_snapshot(root, missing_ok=True, moved_ok=True)
+        if marker is None:
+            raise ValueError(
+                "rebind tracker refusé : ce checkout n'a pas de marqueur tracker. Marche à "
+                "suivre : copiez .foundry/tracker.json depuis un checkout déjà relié, puis "
+                "relancez 'registry rebind ... --marker-only'. Rien n'a été écrit."
+            )
         if marker["tracker"] != tracker or marker["repository"] not in {old, new}:
             raise ValueError("rebind tracker refusé : marqueur étranger à cette liaison")
         data = load()
@@ -1484,6 +1493,15 @@ def rebind_repository_binding(
         if marker["project"] != {"key": current.get("key"), "id": current.get("id")}:
             raise ValueError("rebind tracker refusé : marqueur et entrée sur des projets différents")
         extras = {n: v for n, v in current.items() if n not in {"key", "id", "canonical_repo"}}
+        # The storage key keeps the old basename on a rename; a legacy entry of another
+        # provider on the new basename must be refused here, before any write.
+        _require_unique_checkout_provider(data, tracker, new, repo)
+        if tracker == "ghprojects" and str(extras.get("owner", "")).casefold() != new.split("/")[1].casefold():
+            raise ValueError(
+                "rebind tracker refusé : le changement de propriétaire d'un projet GitHub "
+                "Projects n'est pas géré par 'registry rebind' (extra owner inchangé). "
+                "Rien n'a été écrit."
+            )
         candidate = _validated_binding_entry(
             tracker, repo, current["key"], current["id"], new, dict(extras),
         )
@@ -1492,11 +1510,9 @@ def rebind_repository_binding(
                 tracker, repo, current["key"], current["id"], cwd=str(root),
                 _recovery_probe=True, **extras,
             )
-        except ValueError as exc:
+        except ProjectIdentityMismatchError:
             # Only a provider that does not carry the new identity gets the transfer
             # steps; a typed governance refusal or an unavailable provider keeps its cause.
-            if not str(exc).endswith("étrangères ou contradictoires"):
-                raise
             raise ValueError(
                 f"rebind tracker refusé : le projet {current['key']} du fournisseur '{tracker}' "
                 f"ne porte pas l'identité {new}. Marche à suivre : terminez le transfert chez "
@@ -1545,7 +1561,7 @@ def verify_existing_project(
         extra={name: value for name, value in entry.items() if name not in {"key", "id"}},
     )
     if _recovery_probe:
-        # This private port is reached only after update's exact local preflight.
+        # This private port is reached only after the exact local preflight of update or rebind.
         # It has no provisioning or workflow invocation path.
         from foundry.trackers.youtrack import YouTrackTracker
         from foundry.trackers.linear import LinearTracker
@@ -1571,7 +1587,7 @@ def verify_existing_project(
             f"coordonnées du projet '{tracker}' indisponibles à la relecture"
         ) from None
     if verified is not True:
-        raise ValueError(
+        raise ProjectIdentityMismatchError(
             f"coordonnées du projet '{tracker}' étrangères ou contradictoires"
         )
     return project

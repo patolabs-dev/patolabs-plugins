@@ -1197,7 +1197,7 @@ def test_rebind_keeps_the_cause_of_a_non_identity_provider_refusal(
     (_OLD, "github.com/new-owner/elsewhere", "remote origin du checkout"),
     (_NEW, _NEW, "identités identiques"),
 ])
-def test_rebind_refuses_unknown_old_entry_or_foreign_checkout(
+def test_rebind_refuses_foreign_marker_or_checkout(
     isolated, monkeypatch, old, new, message,
 ):
     repo, seen = _transferred(isolated, monkeypatch)
@@ -1230,21 +1230,15 @@ def test_rebind_marker_only_republishes_another_checkout_without_registry_write(
     registry.rebind_repository_binding("youtrack", _OLD, _NEW, cwd=str(repo))
     # A second checkout still carries the stale marker of the old identity.
     second = _repo(isolated, "new-owner", "app-second", remote="https://github.com/new-owner/app.git")
-    stale = isolated / "stale.json"
-    stale.write_text(json.dumps(registry._v2_marker_payload(
+    (second / ".foundry").mkdir()
+    (second / ".foundry/tracker.json").write_text(json.dumps(registry._v2_marker_payload(
         "youtrack", _OLD, {"key": "APP", "id": "0-1", "canonical_repo": _OLD},
         activation_kind="migration", migration_manifest_digest=_MANIFEST,
     )))
-    (second / ".foundry").mkdir()
-    (second / ".foundry/tracker.json").write_text(stale.read_text())
     registry_file = registry.path()
     before = open(registry_file).read()
     calls = []
     monkeypatch.setattr(registry, "_save", lambda data: calls.append(data))
-    monkeypatch.setattr(
-        registry.os, "replace",
-        lambda src, dst, _r=registry.os.replace: _r(src, dst),
-    )
 
     registry.rebind_repository_binding(
         "youtrack", _OLD, _NEW, cwd=str(second), marker_only=True,
@@ -1257,6 +1251,8 @@ def test_rebind_marker_only_republishes_another_checkout_without_registry_write(
 
 
 def test_rebind_cli_usage_and_help_write_nothing(isolated, capsys):
+    registry.main(["rebind", "--help"])
+    assert "rebind <tracker>" in capsys.readouterr().out
     with pytest.raises(SystemExit, match="rebind <tracker>"):
         registry.main(["rebind", "youtrack", _OLD])
     with pytest.raises(SystemExit, match="rebind <tracker>"):
@@ -1303,3 +1299,101 @@ def test_rebind_still_refuses_active_other_provider_entry(isolated, monkeypatch)
     with pytest.raises(ValueError, match="ambiguë"):
         registry.rebind_repository_binding("youtrack", _OLD, _NEW, cwd=str(repo))
     assert registry.load() == before and seen == []
+
+
+def test_rebind_refuses_absent_registry_entry(isolated, monkeypatch):
+    repo, seen = _transferred(isolated, monkeypatch)
+    registry._save({})
+    with pytest.raises(ValueError, match="entrée de registre absente"):
+        registry.rebind_repository_binding("youtrack", _OLD, _NEW, cwd=str(repo))
+    assert registry.load() == {} and seen == []
+
+
+def test_rebind_refuses_marker_and_entry_on_different_projects(isolated, monkeypatch):
+    repo, seen = _transferred(isolated, monkeypatch)
+    data = registry.load()
+    data["youtrack"]["app"]["key"] = "OTHER"
+    registry._save(data)
+    with pytest.raises(ValueError, match="projets différents"):
+        registry.rebind_repository_binding("youtrack", _OLD, _NEW, cwd=str(repo))
+    assert registry.load() == data and seen == []
+
+
+def test_rebind_refuses_outside_a_git_checkout(isolated):
+    outside = isolated / "plain"
+    outside.mkdir()
+    with pytest.raises(ValueError, match="hors dépôt Git"):
+        registry.rebind_repository_binding("youtrack", _OLD, _NEW, cwd=str(outside))
+
+
+def test_rebind_marker_only_refuses_when_old_identity_still_has_an_entry(
+    isolated, monkeypatch,
+):
+    repo, seen = _transferred(isolated, monkeypatch)
+    registry.rebind_repository_binding("youtrack", _OLD, _NEW, cwd=str(repo))
+    data = registry.load()
+    data["youtrack"]["old"] = {**data["youtrack"]["app"], "canonical_repo": _OLD}
+    registry._save(data)
+    seen.clear()
+    with pytest.raises(ValueError, match="l'ancienne identité a encore une entrée"):
+        registry.rebind_repository_binding(
+            "youtrack", _OLD, _NEW, cwd=str(repo), marker_only=True,
+        )
+    assert registry.load() == data and seen == []
+
+
+def test_rebind_rename_keeps_storage_key_and_refuses_legacy_collision(
+    isolated, monkeypatch,
+):
+    repo, seen = _transferred(isolated, monkeypatch)
+    subprocess.run(
+        ["git", "-C", str(repo), "remote", "set-url", "origin",
+         "https://github.com/new-owner/renamed.git"], check=True,
+    )
+    new = "github.com/new-owner/renamed"
+    data = registry.load()
+    data["linear"] = {"renamed": {"key": "L", "id": "u"}}
+    registry._save(data)
+    with pytest.raises(ValueError, match="ambigu entre providers"):
+        registry.rebind_repository_binding("youtrack", _OLD, new, cwd=str(repo))
+    assert registry.load() == data and seen == []
+    del data["linear"]
+    registry._save(data)
+    registry.rebind_repository_binding("youtrack", _OLD, new, cwd=str(repo))
+    assert registry.load()["youtrack"]["app"]["canonical_repo"] == new
+    assert "renamed" not in registry.load()["youtrack"]
+
+
+def test_rebind_refuses_checkout_without_marker_with_steps(isolated, monkeypatch):
+    repo, seen = _transferred(isolated, monkeypatch)
+    (repo / ".foundry/tracker.json").unlink()
+    before = registry.load()
+    with pytest.raises(ValueError, match="pas de marqueur.*--marker-only"):
+        registry.rebind_repository_binding("youtrack", _OLD, _NEW, cwd=str(repo))
+    assert registry.load() == before and seen == []
+
+
+def test_rebind_ghprojects_owner_change_is_refused_before_the_provider_read(
+    isolated, monkeypatch,
+):
+    repo = _repo(isolated, "old-owner", "app")
+    entry = {
+        "key": "APP", "id": "PVT_x", "canonical_repo": _OLD,
+        "owner": "old-owner", "number": "1",
+    }
+    registry._save({"ghprojects": {"app": entry}})
+    registry._publish_marker(repo, registry._v2_marker_payload(
+        "ghprojects", _OLD, entry, activation_kind="bootstrap",
+        migration_manifest_digest=None,
+    ))
+    subprocess.run(
+        ["git", "-C", str(repo), "remote", "set-url", "origin",
+         "https://github.com/new-owner/app.git"], check=True,
+    )
+    def boom(*_a, **_k):
+        raise AssertionError("provider read reached")
+
+    monkeypatch.setattr(registry, "verify_existing_project", boom)
+    with pytest.raises(ValueError, match="changement de propriétaire"):
+        registry.rebind_repository_binding("ghprojects", _OLD, _NEW, cwd=str(repo))
+    assert registry.load() == {"ghprojects": {"app": entry}}

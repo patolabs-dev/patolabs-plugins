@@ -838,7 +838,12 @@ with the new identity (the read-only identity probe `verify_existing_project` al
 (`GitHubProjectsTracker.verify_project_identity`) check the repository identity there;
 YouTrack and Linear store none and check only the project coordinates, so on them a rebind
 to any repository passes this read. A governance refusal or an unavailable provider keeps
-its own message. It then saves the entry with its
+its own message. A GitHub Projects entry keeps its `owner` extra, so a transfer to another
+owner is refused before the provider read (`registry.rebind_repository_binding`): `rebind`
+does not handle an owner change. A checkout with no marker is refused with the step to
+copy `.foundry/tracker.json` from a rebound checkout and run `--marker-only`. On a rename
+the entry keeps its storage key (the old basename); a legacy entry of another provider on
+the new basename is refused before any write (`_require_unique_checkout_provider`). It then saves the entry with its
 extra fields (`release_ids`, `preserve_issue_numbers`, …) under the new `canonical_repo` and
 republishes the marker with its activation unchanged, a migration keeping its manifest
 digest. As for `update`, the registry is written first and the marker second, two
