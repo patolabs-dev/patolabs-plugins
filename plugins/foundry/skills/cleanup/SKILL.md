@@ -32,14 +32,18 @@ Payload: `worktrees` (clean linked worktrees whose branch is merged, or detached
 already in the default branch), `branches` (merged PR, local tip equal to the PR head or
 already in the default branch, nothing unpushed;
 `blocked_by_worktree` when a worktree that is not proposed holds it), `unsafe` (merged PR
-but local commits that the PR does not contain: list them, never propose them), and
+but unpushed local commits, an unpushed count that `git rev-list` failed to read, or a
+local tip that differs from the PR head and is not in the default branch: list them, never
+propose them), and
 `commands` (what the maintainer could run).
 
 ## 2. Confirm
 Show the proposal grouped: worktrees first (a branch checked out in a worktree cannot be
 deleted before it), then branches, then the `unsafe` items as information only. Ask the
 maintainer to confirm item by item or as a whole. Nothing is removed without an explicit
-yes; no answer means no removal.
+yes; no answer means no removal. Warn that `git worktree remove` also deletes the ignored
+files of a worktree (`.env`, `.venv`, local artefacts), which the clean check does not show
+(observed on a scratch repository, without `--force`).
 
 ## 3. Remove only what was confirmed
 Run the matching entries of `commands` (`git worktree remove <path>`, then

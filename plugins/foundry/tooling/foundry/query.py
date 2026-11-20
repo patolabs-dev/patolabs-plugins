@@ -666,6 +666,8 @@ if __name__ == "__main__":
         raise SystemExit(f"commande query inconnue : {cmd}. {', '.join(_CMDS)}")
     if arg is None and cmd in _REQUIRE_ARG:
         raise SystemExit(f"usage: query {cmd} {_REQUIRE_ARG[cmd]}")
+    if cmd == "cleanup" and arg is not None:
+        raise SystemExit("usage: query cleanup (no argument)")
     if cmd == "profile" and len(sys.argv) > 3 and sys.argv[3] == "--all-pages":
         if len(sys.argv) != 5:
             raise SystemExit("usage: query profile <name> --all-pages <DIR>")
