@@ -691,6 +691,9 @@ def test_import_adrs_check_accepts_a_directory_not_starting_at_one(tmp_path):
     (adrs / "TRAME-ADR-0003-c.md").write_text("# C\n")
     (adrs / "TRAME-ADR-0004-d.md").write_text("# D\n")
     setup_project.check_adr_dir("TRAME", str(adrs))
+    (adrs / "TRAME-ADR-0005-e.md").write_bytes(b"\xff\xfe")
+    with pytest.raises(SystemExit, match="illisible"):
+        setup_project.check_adr_dir("TRAME", str(adrs))
 
 
 def test_scope_error_message_covers_both_causes_and_remedies():

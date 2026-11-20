@@ -94,10 +94,12 @@ def import_adrs(tracker, project, adr_dir):
 
 
 def check_adr_dir(short, adr_dir):
-    """Read-only preflight of ``--import-adrs`` (PLP-387): the ``import_adrs`` checks that
-    need no tracker (directory, ``<KEY>-ADR-NNNN`` filenames, no gap between the
-    directory's own numbers). Where the numbering starts is checked by ``import_adrs``
-    against the ADRs already in the KB."""
+    """Read-only preflight of ``--import-adrs`` (PLP-387), before any write: the directory,
+    ``<KEY>-ADR-NNNN`` filenames, each file readable as text, and no gap between the
+    directory's own numbers. Where the numbering starts is checked by ``import_adrs``
+    against the ADRs already in the KB. Stricter than ``import_adrs`` on one point: a gap
+    is refused even when the missing numbers are already in the KB, a case a new project
+    (the only one ``setup`` accepts) cannot have."""
     if not os.path.isdir(adr_dir):
         raise SystemExit(f"Setup tracker refusé : --import-adrs '{adr_dir}' n'est pas un dossier.")
     numbers = []
@@ -109,6 +111,11 @@ def check_adr_dir(short, adr_dir):
             raise SystemExit(
                 f"Setup tracker refusé : fichier ADR sans identifiant {short}-ADR-NNNN : {fn}"
             )
+        try:
+            with open(os.path.join(adr_dir, fn), encoding="utf-8") as f:
+                f.read()
+        except (OSError, UnicodeDecodeError) as exc:
+            raise SystemExit(f"Setup tracker refusé : fichier ADR illisible : {fn} ({exc})")
         numbers.append(int(match.group(1)))
     if numbers and numbers != list(range(numbers[0], numbers[0] + len(numbers))):
         raise SystemExit(f"Setup tracker refusé : numérotation ADR non contiguë dans {adr_dir}.")

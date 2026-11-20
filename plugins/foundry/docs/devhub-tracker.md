@@ -131,8 +131,9 @@ write; the provider project may already exist when the 403 comes from the second
 of `provision_project`. Any other 403 keeps its generic message.
 
 `setup_project --import-adrs` (dry run or not) is checked read-only before any write
-(`check_adr_dir`): directory, `<KEY>-ADR-NNNN` filenames, no gap in the directory's
-numbering; where the numbering starts is checked by `import_adrs` against the KB.
+(`check_adr_dir`): directory, `<KEY>-ADR-NNNN` filenames, files readable as text, no gap
+in the directory's numbering; where the numbering starts is checked by `import_adrs`
+against the KB.
 
 An existing DevHub registry entry that carries `canonical_repo` but has no marker (for
 example one written by `registry register` before PAT-323) is classified, deduced from

@@ -28,7 +28,7 @@ python3 "$(test -n "${CLAUDE_PLUGIN_ROOT}" && printf %s "${CLAUDE_PLUGIN_ROOT}" 
 ```
 It runs the local proofs of `setup_project` (no marker, no canonical or legacy registry
 entry under any provider, no registry entry already named after the repository) and the provisioning-support check, and, with `--import-adrs`, a read-only check of
-the directory (`setup_project.check_adr_dir`: filenames, no numbering gap), then prints
+the directory (`setup_project.check_adr_dir`: filenames, readable files, no numbering gap), then prints
 the provider, the key, the repo and, when the provider requires it, the canonical origin
 identity; it writes nothing, locally or at the provider (`tooling/foundry/setup_project.py`,
 `setup(..., dry_run=True)`). A refusal means the checkout is already linked or the provider
