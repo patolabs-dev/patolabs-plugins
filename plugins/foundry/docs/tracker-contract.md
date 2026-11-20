@@ -838,15 +838,21 @@ with the new identity (the read-only identity probe `verify_existing_project` al
 (`GitHubProjectsTracker.verify_project_identity`) check the repository identity there;
 YouTrack and Linear store none and check only the project coordinates, so on them a rebind
 to any repository passes this read. A governance refusal or an unavailable provider keeps
-its own message. It then saves the entry with its
-extra fields (`release_ids`, `preserve_issue_numbers`, …) under the new `canonical_repo` and
-republishes the marker with its activation unchanged, a migration keeping its manifest
-digest. As for `update`, the registry is written first and the marker second, two
-atomic replacements, not one transaction. If the marker step is interrupted, or for another
-checkout whose marker still names the old identity, run `rebind ... --marker-only` there:
-it requires the entry already rebound, makes the same provider read-back, and never writes
-the registry. Every refusal happens before any write. The command is the same for Claude
-Code and Codex.
+its own message. A GitHub Projects entry keeps its `owner` extra, so a transfer to another
+owner is refused before the provider read (`registry.rebind_repository_binding`): `rebind`
+does not handle an owner change. A checkout with no marker is refused with the step to
+restore `.foundry/tracker.json` from Git or from a rebound checkout, then run `rebind`
+again (with `--marker-only` when the registry is already rebound). On a rename the entry
+keeps its storage key (the old basename); a legacy entry of another provider on the new
+basename is refused before any write (`_require_unique_checkout_provider`). `rebind` then
+saves the entry with its extra fields (`release_ids`, `preserve_issue_numbers`, …) under
+the new `canonical_repo` and republishes the marker with its activation unchanged, a
+migration keeping its manifest digest. As for `update`, the registry is written first and
+the marker second, two atomic replacements, not one transaction. If the marker step is
+interrupted, or for another checkout whose marker still names the old identity, run
+`rebind ... --marker-only` there: it requires the entry already rebound, makes the same
+provider read-back, and never writes the registry. Every refusal happens before any write.
+The command is the same for Claude Code and Codex.
 
 Every adapter resolves again through the strict shared checkout selection before
 activation, including Linear; a factory created before an interrupted update cannot
