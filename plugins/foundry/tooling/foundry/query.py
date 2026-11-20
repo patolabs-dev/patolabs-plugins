@@ -11,7 +11,7 @@ List payloads are LEAN (no bodies): `backlog`/`candidates`/`adrs` carry the sign
 `issue <ID>` and `adr <ADR-ID>` — summary first, detail when it's actually needed.
 
 CLI: PYTHONPATH=…/tooling python3 -m foundry.query \
-     <backlog|candidates|milestones|issue|adrs|adr|changelog|profile> [args]
+     <backlog|candidates|milestones|issue|adrs|adr|changelog|profile|cleanup> [args]
 """
 from __future__ import annotations
 
@@ -627,6 +627,18 @@ def changelog(milestone: str):
 _CMDS = {"backlog": backlog, "candidates": candidates, "milestones": milestones,
          "issue": issue, "adrs": adrs, "adr": adr, "changelog": changelog}
 _CMDS["profile"] = profile
+
+
+def cleanup() -> dict:
+    """PLP-365: read-only proposal of merged branches / idle worktrees (`foundry.cleanup`)."""
+    from foundry import cleanup as _cleanup
+    try:
+        return _cleanup.propose()
+    except _cleanup.CleanupUnavailable as exc:
+        raise SystemExit(f"cleanup indisponible : {exc}") from None
+
+
+_CMDS["cleanup"] = cleanup
 
 _REQUIRE_ARG = {"issue": "<ISSUE-ID>", "adr": "<ADR-ID>", "changelog": "<MILESTONE>",
                 "profile": "<next-issue|roadmap|blockers|groom|intake>"}

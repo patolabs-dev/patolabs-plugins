@@ -439,6 +439,7 @@ Skills keep one shared implementation. Use `/foundry:<skill>` in Claude Code and
 | `foundry:groom` · `foundry:blockers` | backlog health · what's stuck |
 | `foundry:adr` · `foundry:doctor` | record decisions · check wiring |
 | `foundry:new-project` | start a fresh repository under Foundry: `setup_project --dry-run` preflight, confirmation, provisioning, marker PR, `doctor` |
+| `foundry:cleanup` | propose, then remove only on confirmation, the local branches whose PR is merged and the worktrees with no local change (`query cleanup`, read-only) |
 
 The 0.8.0 merge gate can consume a structured reviewer proof when tracker AC remain
 unchecked. `routing record-review-proof` binds ordered AC outcomes and the quality
@@ -797,6 +798,20 @@ procedure before resuming. An alias alone cannot authorize that new identity.
 ADR bootstrap import is keyed by the required `<KEY>-ADR-NNNN` ID in each filename,
 not its mutable title, and refuses an unnumbered file or numbering gap before writing
 anything.
+
+## Clean up merged branches and worktrees
+
+`python3 tooling/foundry_cli.py query cleanup`, run from a checkout, is read-only
+(`tooling/foundry/cleanup.py`, `propose`). It lists the local branches whose PR is merged
+(PR state through the code host `list_prs`, not Git ancestry, which a squash merge breaks),
+the clean linked worktrees on those branches, and as `unsafe` the merged branches that
+carry local commits the PR lacks. It reflects the last `git fetch`, fetches nothing and
+prints the removal commands without running them. `foundry:cleanup` (`/foundry:cleanup`,
+`$foundry:cleanup` in Codex) shows the proposal and removes only what the maintainer
+confirms. To run the proposal on a schedule, use a recurring task on the maintainer's own
+machine (`AGENTS.md#R6`), such as a local scheduled task of the desktop host or a cron or
+launchd entry; a cloud routine does not run on that machine. The repository ships no
+scheduled task.
 
 ## Develop Foundry (dogfooding)
 
