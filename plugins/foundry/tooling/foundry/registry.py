@@ -438,9 +438,13 @@ def _registry_project_for_marker(
 
 
 def _strict_marker_snapshot(
-    root: Path, *, missing_ok: bool = False,
+    root: Path, *, missing_ok: bool = False, moved_ok: bool = False,
 ) -> dict[str, object] | None:
-    """Parse one marker completely without consulting or changing the registry."""
+    """Parse one marker completely without consulting or changing the registry.
+
+    ``moved_ok`` (PLP-385, ``registry rebind`` only) accepts a marker whose repository
+    differs from the checkout's current origin: that is the stale marker of a transfer.
+    """
     marker = root / _TRACKER_MARKER_RELATIVE_PATH
     if marker.parent.is_symlink() or (
         marker.parent.exists() and not marker.parent.is_dir()
@@ -519,7 +523,7 @@ def _strict_marker_snapshot(
         actual_repository = checkout_repository_identity(str(root))
     except ValueError:
         raise ValueError("marqueur tracker de dépôt invalide") from None
-    if actual_repository != repository:
+    if actual_repository != repository and not moved_ok:
         raise ValueError("marqueur tracker incompatible avec le dépôt courant")
     configuration = {
         name: data[name] for name in expected_keys
@@ -1420,6 +1424,101 @@ def update_repository_binding(
         return published
 
 
+def rebind_repository_binding(
+    tracker: str,
+    old_repository: str,
+    new_repository: str,
+    *,
+    cwd: str | None = None,
+    marker_only: bool = False,
+) -> RepositoryTrackerBinding:
+    """Relink a transferred or renamed repository to its existing tracker project (PLP-385).
+
+    The checkout's origin must already be ``new_repository``. The provider must report
+    the new identity (``verify_existing_project``) before anything is written. The
+    entry keeps every extra field and the marker keeps its activation (a migration keeps
+    its manifest digest). ``marker_only`` republishes this checkout's marker from the
+    already rebound entry and never writes the registry. Every refusal precedes any write.
+    """
+    root = _checkout_root(cwd)
+    if root is None:
+        raise ValueError("rebind tracker hors dépôt Git")
+    old = canonical_repository_identity(old_repository)
+    new = canonical_repository_identity(new_repository)
+    if old == new:
+        raise ValueError("rebind tracker refusé : ancienne et nouvelle identités identiques")
+    if checkout_repository_identity(str(root)) != new:
+        raise ValueError(
+            f"rebind tracker refusé : le remote origin du checkout n'est pas {new}"
+        )
+    repo = repo_basename(str(root), use_env=False)
+    with _cutover_lock():
+        marker = _strict_marker_snapshot(root, moved_ok=True)
+        assert marker is not None
+        if marker["tracker"] != tracker or marker["repository"] not in {old, new}:
+            raise ValueError("rebind tracker refusé : marqueur étranger à cette liaison")
+        data = load()
+        # Archived tombstones of a former provider stay untouched and never count.
+        old_matches, new_matches = (
+            [m for m in _canonical_registry_matches(data, identity)
+             if m[2].get("archive") is not True]
+            for identity in (old, new)
+        )
+        source, other = (new_matches, old_matches) if marker_only else (old_matches, new_matches)
+        if other:
+            raise ValueError(
+                "rebind tracker refusé : "
+                + ("l'ancienne identité a encore une entrée" if marker_only
+                   else "la nouvelle identité a déjà une entrée ; "
+                        "republiez le marqueur avec --marker-only")
+            )
+        if not source:
+            raise ValueError("rebind tracker refusé : entrée de registre absente")
+        current = source[0][2]
+        if any(
+            provider != tracker or entry != current or entry.get("archive") is True
+            or "_staged_cutover" in entry
+            for provider, _name, entry in source
+        ):
+            raise ValueError("rebind tracker refusé : entrée ambiguë, archivée ou d'un autre provider")
+        if marker["project"] != {"key": current.get("key"), "id": current.get("id")}:
+            raise ValueError("rebind tracker refusé : marqueur et entrée sur des projets différents")
+        extras = {n: v for n, v in current.items() if n not in {"key", "id", "canonical_repo"}}
+        candidate = _validated_binding_entry(
+            tracker, repo, current["key"], current["id"], new, dict(extras),
+        )
+        try:
+            verify_existing_project(
+                tracker, repo, current["key"], current["id"], cwd=str(root),
+                _recovery_probe=True, **extras,
+            )
+        except ValueError as exc:
+            # Only a provider that does not carry the new identity gets the transfer
+            # steps; a typed governance refusal or an unavailable provider keeps its cause.
+            if not str(exc).endswith("étrangères ou contradictoires"):
+                raise
+            raise ValueError(
+                f"rebind tracker refusé : le projet {current['key']} du fournisseur '{tracker}' "
+                f"ne porte pas l'identité {new}. Marche à suivre : terminez le transfert chez "
+                "le fournisseur (le projet doit référencer le nouveau dépôt), vérifiez "
+                "'git remote get-url origin', puis relancez 'registry rebind'. Rien n'a été écrit."
+            ) from None
+        activation = marker["activation"]
+        payload = _v2_marker_payload(
+            tracker, new, candidate, activation_kind=activation["kind"],
+            migration_manifest_digest=activation.get("manifest_digest"),
+        )
+        if not marker_only:
+            for provider, name, _entry in source:
+                data[provider][name] = candidate
+            _save(data)
+        _publish_marker(root, payload)
+        published = repository_tracker_binding(str(root))
+        if published is None or published.configuration_digest != payload["configuration_digest"]:
+            raise ValueError("rebind tracker : relecture divergente")
+        return published
+
+
 def verify_existing_project(
     tracker: str,
     repo: str,
@@ -1852,6 +1951,7 @@ def main(argv=None) -> None:
         "alias <tracker> <source-repo> <alias-repo> | "
         "bootstrap <tracker> <repo> <KEY> <project-id> [k=v …] | "
         "upgrade <tracker> <repo> | "
+        "rebind <tracker> <old-repository> <new-repository> [--marker-only] | "
         "update <tracker> <repo> <KEY> <project-id> "
         "<expected-configuration-sha256> [k=v …] | selection [--require-v1] | "
         "cutover <tracker> <KEY> <project-id> <migration-manifest-sha256>]"
@@ -1941,6 +2041,25 @@ def main(argv=None) -> None:
             binding = bootstrap_repository_binding(
                 tracker, repo, verified.key, verified.id,
                 activation_kind="upgrade", **verified.extra,
+            )
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from None
+        print(json.dumps({
+            "mode": "v1", "activation": binding.activation_kind,
+            "repository": binding.repository, "tracker": binding.tracker,
+            "project": {"key": binding.project.key, "id": binding.project.id},
+            "configuration_digest": binding.configuration_digest,
+        }, indent=2, sort_keys=True))
+        return
+    if args[0] == "rebind":
+        flags = [a for a in args[1:] if a.startswith("--")]
+        positional = [a for a in args[1:] if not a.startswith("--")]
+        if len(positional) != 3 or flags not in ([], ["--marker-only"]):
+            raise SystemExit(usage)
+        tracker, old_repository, new_repository = positional
+        try:
+            binding = rebind_repository_binding(
+                tracker, old_repository, new_repository, marker_only=bool(flags),
             )
         except ValueError as exc:
             raise SystemExit(str(exc)) from None

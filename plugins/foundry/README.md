@@ -735,13 +735,16 @@ python3 tooling/foundry_cli.py registry upgrade <tracker> <legacy-repo>
 python3 tooling/foundry_cli.py registry selection [--require-v1]
 python3 tooling/foundry_cli.py registry update <tracker> <repo> <KEY> <project-id> \
   <expected-configuration-sha256> [complete k=v …]
+python3 tooling/foundry_cli.py registry rebind <tracker> <old-repository> <new-repository> [--marker-only]
 ```
 
 The provider coordinates are read back before the registry and marker are published.
 Credentials stay in host configuration; the committed marker contains only canonical
 repository identity, project coordinates and binding digests. See
 [`docs/tracker-contract.md`](docs/tracker-contract.md) for the exact provider fields and
-upgrade/recovery rules.
+upgrade/recovery rules. `registry rebind` (PLP-385) relinks a transferred or renamed
+repository: see the `rebind` paragraph of the same page. It is a host-neutral CLI verb, the
+same for Claude Code and Codex.
 
 Every Tracker implements the common normalized issue and ADR read/write surface.
 Capabilities that are not universal stay explicit and default-off on the port. Project
