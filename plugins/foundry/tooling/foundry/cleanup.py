@@ -29,6 +29,12 @@ def _git(cwd: str, *args: str, check: bool = True) -> str:
     return r.stdout.strip() if r.returncode == 0 else ""
 
 
+def _git_ok(cwd: str, *args: str) -> str | None:
+    """Stdout of a git read verb, or None when it fails (callers fail closed)."""
+    r = subprocess.run(("git", *args), cwd=cwd, capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
 def _is_ancestor(cwd: str, commit: str, ref: str) -> bool:
     return subprocess.run(("git", "merge-base", "--is-ancestor", commit, ref),
                           cwd=cwd, capture_output=True).returncode == 0
@@ -94,10 +100,15 @@ def propose(cwd: str | None = None, codehost=None) -> dict:
                 "worktree": checked_out.get(name)}
         reasons = []
         if upstream and "gone" not in track:
-            ahead = int(_git(root, "rev-list", "--count", f"{upstream}..{name}", check=False) or 0)
-            item["unpushed"] = ahead
-            if ahead:
-                reasons.append(f"{ahead} local commit(s) not on {upstream}")
+            count = _git_ok(root, "rev-list", "--count", f"{upstream}..{name}")
+            if count is None or not count.isdigit():
+                item["unpushed"] = None
+                reasons.append(f"unpushed commits unknown: rev-list failed against {upstream}")
+            else:
+                ahead = int(count)
+                item["unpushed"] = ahead
+                if ahead:
+                    reasons.append(f"{ahead} local commit(s) not on {upstream}")
         else:
             item["unpushed"] = None
         if tip != pr.sha and not _is_ancestor(root, tip, f"origin/{default}"):
@@ -118,7 +129,10 @@ def propose(cwd: str | None = None, codehost=None) -> dict:
             eligible = branch in safe_names
         else:
             eligible = bool(t.get("HEAD")) and _is_ancestor(root, t["HEAD"], f"origin/{default}")
-        if eligible and not _git(path, "--no-optional-locks", "status", "--porcelain", check=False):
+        if not eligible:
+            continue
+        status = _git_ok(path, "--no-optional-locks", "status", "--porcelain")
+        if status == "":  # a failed status (None) is not clean: fail closed
             worktrees.append({"path": path, "branch": branch, "clean": True})
 
     removed = {w["path"] for w in worktrees}

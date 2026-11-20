@@ -1,5 +1,6 @@
 """PLP-365: `query cleanup` proposes merged branches / idle worktrees and deletes nothing."""
 import os
+import pathlib
 import subprocess
 
 import pytest
@@ -46,14 +47,20 @@ def repo(tmp_path):
     _g(work, "push", "-q", "origin", "main")
     _g(work, "remote", "set-head", "origin", "main")
     tips = {}
-    for name in ("merged", "open", "nopr", "unsafe", "wtclean", "wtdirty"):
+    for name in ("merged", "open", "nopr", "unsafe", "wtclean", "wtdirty", "behind", "gone"):
         _g(work, "checkout", "-q", "-b", name, "main")
         _g(work, "commit", "-q", "--allow-empty", "-m", name)
         tips[name] = _g(work, "rev-parse", "HEAD")
         _g(work, "push", "-q", "-u", "origin", name)
     _g(work, "checkout", "-q", "unsafe")
     _g(work, "commit", "-q", "--allow-empty", "-m", "local only")
+    # "behind": the PR head moved on (squash/amend); the local tip differs, nothing unpushed
     _g(work, "checkout", "-q", "main")
+    # "gone": upstream deleted on the remote after the merge
+    _g(work, "push", "-q", "origin", "--delete", "gone")
+    _g(work, "fetch", "-q", "--prune", "origin")
+    # detached worktree on a commit already in main
+    _g(work, "worktree", "add", "-q", "--detach", str(tmp_path / "wt-detached"), "main")
     clean, dirty = tmp_path / "wt-clean", tmp_path / "wt-dirty"
     _g(work, "worktree", "add", "-q", str(clean), "wtclean")
     _g(work, "worktree", "add", "-q", str(dirty), "wtdirty")
@@ -62,7 +69,9 @@ def repo(tmp_path):
            "open": [_pr("open", tips["open"], merged=False, number=3)],
            "unsafe": [_pr("unsafe", tips["unsafe"], number=4)],
            "wtclean": [_pr("wtclean", tips["wtclean"], number=5)],
-           "wtdirty": [_pr("wtdirty", tips["wtdirty"], number=6)]}
+           "wtdirty": [_pr("wtdirty", tips["wtdirty"], number=6)],
+           "behind": [_pr("behind", tips["merged"], number=7)],
+           "gone": [_pr("gone", tips["gone"], number=8)]}
     return work, clean, dirty, prs
 
 
@@ -76,17 +85,80 @@ def test_proposal_lists_merged_branches_and_clean_worktrees_and_writes_nothing(r
     host = FakeHost(prs)
     out = cleanup.propose(str(work), host)
     assert _snapshot(work) == before
-    assert sorted(b["branch"] for b in out["branches"]) == ["merged", "wtclean", "wtdirty"]
-    assert [w["path"] for w in out["worktrees"]] == [os.path.realpath(clean)]
-    assert [u["branch"] for u in out["unsafe"]] == ["unsafe"]
-    assert out["unsafe"][0]["unpushed"] == 1
+    assert sorted(b["branch"] for b in out["branches"]) == [
+        "gone", "merged", "wtclean", "wtdirty"]
+    assert sorted(w["path"] for w in out["worktrees"]) == sorted(
+        os.path.realpath(p) for p in (clean, clean.parent / "wt-detached"))
+    assert [w["branch"] for w in out["worktrees"] if w["branch"] is None] == [None]
+    assert sorted(u["branch"] for u in out["unsafe"]) == ["behind", "unsafe"]
+    assert {u["branch"]: u["unpushed"] for u in out["unsafe"]}["unsafe"] == 1
     assert "main" not in host.calls and "open" in host.calls
     by = {b["branch"]: b for b in out["branches"]}
     assert by["wtdirty"]["blocked_by_worktree"] and not by["wtclean"]["blocked_by_worktree"]
+    by_unsafe = {u["branch"]: u for u in out["unsafe"]}
+    assert by_unsafe["behind"]["unpushed"] == 0
+    assert by_unsafe["behind"]["reasons"] == ["local tip differs from the merged PR head"]
+    assert by["gone"]["unpushed"] is None
     assert out["commands"][0].startswith("git worktree remove ")
     assert "git branch -D merged" in out["commands"]
     assert "git branch -D wtdirty" not in out["commands"]
     assert "git branch -D unsafe" not in out["commands"]
+
+
+def test_propose_leaves_linked_worktree_indexes_untouched(repo):
+    work, clean, dirty, prs = repo
+    (clean / "tracked.txt").write_text("t")
+    _g(clean, "add", "tracked.txt")
+    _g(clean, "-c", "user.email=t@example.invalid", "-c", "user.name=t", "commit", "-qm", "t")
+    # a stale stat entry makes a plain `git status` rewrite the index
+    os.utime(clean / "tracked.txt", (1_000_000_000, 1_000_000_000))
+    idx = pathlib.Path(_g(clean, "rev-parse", "--absolute-git-dir")) / "index"
+    didx = pathlib.Path(_g(dirty, "rev-parse", "--absolute-git-dir")) / "index"
+    before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in (idx, didx)}
+    cleanup.propose(str(work), FakeHost(prs))
+    assert {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in (idx, didx)} == before
+
+
+def test_worktree_with_failing_status_is_not_proposed(repo, monkeypatch):
+    work, clean, _, prs = repo
+    real = cleanup._git_ok
+
+    def fake(cwd, *args):
+        return None if "status" in args else real(cwd, *args)
+
+    monkeypatch.setattr(cleanup, "_git_ok", fake)
+    assert cleanup.propose(str(work), FakeHost(prs))["worktrees"] == []
+
+
+def test_failing_rev_list_makes_the_branch_unsafe(repo, monkeypatch):
+    work, _, _, prs = repo
+    real = cleanup._git_ok
+
+    def fake(cwd, *args):
+        return None if "rev-list" in args else real(cwd, *args)
+
+    monkeypatch.setattr(cleanup, "_git_ok", fake)
+    out = cleanup.propose(str(work), FakeHost(prs))
+    merged = [u for u in out["unsafe"] if u["branch"] == "merged"]
+    assert merged and "unknown" in merged[0]["reasons"][0]
+    assert "merged" not in [b["branch"] for b in out["branches"]]
+
+
+def test_missing_origin_head_refuses(repo):
+    work, _, _, prs = repo
+    _g(work, "remote", "set-head", "origin", "-d")
+    with pytest.raises(cleanup.CleanupUnavailable, match="refs/remotes/origin/HEAD"):
+        cleanup.propose(str(work), FakeHost(prs))
+
+
+def test_query_cleanup_refuses_an_extra_argument(monkeypatch, capsys):
+    import runpy
+    import sys
+    monkeypatch.setattr(sys, "argv", ["query.py", "cleanup", "extra"])
+    monkeypatch.delitem(sys.modules, "foundry.query", raising=False)
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("foundry.query", run_name="__main__")
+    assert "usage: query cleanup" in str(exc.value)
 
 
 def test_code_host_failure_fails_closed(repo):

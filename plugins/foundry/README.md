@@ -805,7 +805,9 @@ anything.
 (`tooling/foundry/cleanup.py`, `propose`). It lists the local branches whose PR is merged
 (PR state through the code host `list_prs`, not Git ancestry, which a squash merge breaks),
 the clean linked worktrees on those branches or detached on a commit already in the default
-branch, and as `unsafe` the merged branches that carry local commits the PR lacks. It
+branch, and as `unsafe` the merged branches with unpushed local commits or a local tip
+that differs from the PR head and is not in the default branch. A worktree whose
+`git status` fails is not proposed. It
 reflects the last `git fetch`, fetches nothing and prints the removal commands without
 running them. `foundry:cleanup` (`/foundry:cleanup`,
 `$foundry:cleanup` in Codex) shows the proposal and removes only what the maintainer
