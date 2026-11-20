@@ -54,7 +54,7 @@ def repo(tmp_path):
         _g(work, "push", "-q", "-u", "origin", name)
     _g(work, "checkout", "-q", "unsafe")
     _g(work, "commit", "-q", "--allow-empty", "-m", "local only")
-    # "behind": the PR head moved on (squash/amend); the local tip differs, nothing unpushed
+    # "behind": the PR head is another commit (sibling, not in main); nothing unpushed
     _g(work, "checkout", "-q", "main")
     # "gone": upstream deleted on the remote after the merge
     _g(work, "push", "-q", "origin", "--delete", "gone")
@@ -110,12 +110,16 @@ def test_propose_leaves_linked_worktree_indexes_untouched(repo):
     (clean / "tracked.txt").write_text("t")
     _g(clean, "add", "tracked.txt")
     _g(clean, "-c", "user.email=t@example.invalid", "-c", "user.name=t", "commit", "-qm", "t")
+    _g(clean, "push", "-q")
+    prs["wtclean"] = [_pr("wtclean", _g(clean, "rev-parse", "HEAD"), number=5)]
     # a stale stat entry makes a plain `git status` rewrite the index
     os.utime(clean / "tracked.txt", (1_000_000_000, 1_000_000_000))
     idx = pathlib.Path(_g(clean, "rev-parse", "--absolute-git-dir")) / "index"
     didx = pathlib.Path(_g(dirty, "rev-parse", "--absolute-git-dir")) / "index"
     before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in (idx, didx)}
-    cleanup.propose(str(work), FakeHost(prs))
+    out = cleanup.propose(str(work), FakeHost(prs))
+    # the clean worktree is proposed, so its `git status` did run
+    assert os.path.realpath(clean) in [w["path"] for w in out["worktrees"]]
     assert {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in (idx, didx)} == before
 
 
@@ -151,7 +155,7 @@ def test_missing_origin_head_refuses(repo):
         cleanup.propose(str(work), FakeHost(prs))
 
 
-def test_query_cleanup_refuses_an_extra_argument(monkeypatch, capsys):
+def test_query_cleanup_refuses_an_extra_argument(monkeypatch):
     import runpy
     import sys
     monkeypatch.setattr(sys, "argv", ["query.py", "cleanup", "extra"])

@@ -32,8 +32,9 @@ Payload: `worktrees` (clean linked worktrees whose branch is merged, or detached
 already in the default branch), `branches` (merged PR, local tip equal to the PR head or
 already in the default branch, nothing unpushed;
 `blocked_by_worktree` when a worktree that is not proposed holds it), `unsafe` (merged PR
-but unpushed local commits, or a local tip that differs from the PR head and is not in the
-default branch: list them, never propose them), and
+but unpushed local commits, an unpushed count that `git rev-list` failed to read, or a
+local tip that differs from the PR head and is not in the default branch: list them, never
+propose them), and
 `commands` (what the maintainer could run).
 
 ## 2. Confirm
