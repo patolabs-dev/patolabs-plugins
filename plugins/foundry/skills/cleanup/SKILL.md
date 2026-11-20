@@ -28,8 +28,9 @@ and writes nothing, so it reflects the last `git fetch`: run `git fetch --prune`
 if the maintainer wants fresh data. If the code host is unavailable it stops with a
 message and proposes nothing: report it and stop.
 
-Payload: `worktrees` (clean linked worktrees whose branch is merged), `branches` (merged PR,
-local tip equal to the PR head or already in the default branch, nothing unpushed;
+Payload: `worktrees` (clean linked worktrees whose branch is merged, or detached on a commit
+already in the default branch), `branches` (merged PR, local tip equal to the PR head or
+already in the default branch, nothing unpushed;
 `blocked_by_worktree` when a worktree that is not proposed holds it), `unsafe` (merged PR
 but local commits that the PR does not contain: list them, never propose them), and
 `commands` (what the maintainer could run).

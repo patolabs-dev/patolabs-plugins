@@ -5,7 +5,8 @@ the judgment lives in `skills/cleanup`). Squash merges leave no Git ancestry, so
 authority is the PR state read through the CodeHost port (`list_prs`), one call per
 local candidate branch. Nothing is fetched: results reflect the last `git fetch`.
 Local state is read with `git` read verbs only (`for-each-ref`, `worktree list`,
-`status --porcelain`, `rev-parse`, `rev-list`, `merge-base`).
+`status --porcelain` with `--no-optional-locks` so no index refresh is written,
+`rev-parse`, `rev-list`, `merge-base`).
 """
 from __future__ import annotations
 
@@ -117,7 +118,7 @@ def propose(cwd: str | None = None, codehost=None) -> dict:
             eligible = branch in safe_names
         else:
             eligible = bool(t.get("HEAD")) and _is_ancestor(root, t["HEAD"], f"origin/{default}")
-        if eligible and not _git(path, "status", "--porcelain", check=False):
+        if eligible and not _git(path, "--no-optional-locks", "status", "--porcelain", check=False):
             worktrees.append({"path": path, "branch": branch, "clean": True})
 
     removed = {w["path"] for w in worktrees}
