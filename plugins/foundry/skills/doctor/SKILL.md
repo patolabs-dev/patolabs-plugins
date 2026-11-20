@@ -69,7 +69,7 @@ python3 "$(test -n "${CLAUDE_PLUGIN_ROOT}" && printf %s "${CLAUDE_PLUGIN_ROOT}" 
 - Red for a new checkout targeting an existing provider project → use
   `registry bootstrap <tracker> <repo> <KEY> <project-id> [k=v …]`;
   it verifies provider coordinates before publishing a canonical binding and marker.
-- Administrative project creation remains the historical optional setup path:
-  `setup_project "<Name>" <KEY> <repo>`, only on a proven unbound checkout and a provider
-  supporting provisioning. `registry register` is a legacy registry API, not the V1
-  bootstrap or marker-recovery path.
+- Administrative project creation for a fresh repository goes through `foundry:new-project`
+  (`setup_project "<Name>" <KEY> <repo>` with its `--dry-run` preflight), only on a proven
+  unbound checkout and a provider supporting provisioning. `registry register` is a legacy
+  registry API, not the V1 bootstrap or marker-recovery path.

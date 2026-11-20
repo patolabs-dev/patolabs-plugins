@@ -508,3 +508,13 @@ def test_open_pr_and_merge_pr_state_the_changelog_fragment_rule():
     for name in ("open-pr", "merge-pr"):
         text = _flat(_skill_text(name))
         assert "changelog.d/<ISSUE-ID>.md" in text and "## Unreleased" in text, name
+
+
+def test_new_project_skill_is_wired_and_never_bypasses_the_pr_flow():
+    """PLP-384: the skill is documented for both hosts and opens its PR through Foundry (R1)."""
+    text = open(os.path.join(_SKILLS_DIR, "new-project", "SKILL.md")).read()
+    assert "/foundry:new-project" in text and "$foundry:new-project" in text
+    assert "--dry-run" in text and "issue openpr" in text
+    assert "gh pr create" in text and "never `gh pr create`" in text
+    readme = open(os.path.join(_SKILLS_DIR, "..", "README.md")).read()
+    assert "`foundry:new-project`" in readme

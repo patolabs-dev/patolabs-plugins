@@ -1554,7 +1554,7 @@ def verify_existing_project(
 ) -> Project:
     """Read back exact provider coordinates before any local binding publication."""
     import foundry
-    from foundry.trackers.devhub import DevHubGovernanceModeError
+    from foundry.trackers.devhub import DevHubGovernanceModeError, DevHubProjectScopeError
 
     root = _checkout_root(cwd)
     if root is None:
@@ -1585,8 +1585,8 @@ def verify_existing_project(
         adapter = foundry.tracker(tracker, cwd=str(root))
     try:
         verified = adapter.verify_project_identity(project)
-    except DevHubGovernanceModeError as exc:
-        # Only this typed DevHub refusal (PAT-321) names its cause; any other adapter error,
+    except (DevHubGovernanceModeError, DevHubProjectScopeError) as exc:
+        # Only these typed DevHub refusals (PAT-321, PLP-384) name their cause; any other adapter error,
         # a TrackerConflictError included, keeps the generic message below (PLP-14).
         raise ValueError(str(exc)) from None
     except Exception:

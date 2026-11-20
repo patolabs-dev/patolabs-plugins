@@ -516,3 +516,150 @@ def test_setup_preserves_foreign_homonym_on_another_provider(
     assert registry.load().get("youtrack", {}) == {}
     assert registry.repository_tracker_binding(str(first)) == first_binding
     assert not (second / ".foundry/tracker.json").exists()
+
+
+# --- PLP-384: preflight, explicit provider, 403 translation ---
+
+def _devhub_setup_env(monkeypatch, tmp_path, tracker, host_default="youtrack"):
+    repo = _repo(tmp_path, "acme", "trame")
+    selected = []
+    monkeypatch.setenv("FOUNDRY_TRACKER", host_default)
+    monkeypatch.setattr(foundry, "tracker", lambda name=None: selected.append(name) or tracker)
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("FOUNDRY_DATA", str(tmp_path))
+    return repo, selected
+
+
+def test_dry_run_prints_the_plan_and_writes_nothing(monkeypatch, tmp_path, capsys):
+    tracker = ScriptedDevHubTracker([])  # any provider request would fail the test
+    repo, selected = _devhub_setup_env(monkeypatch, tmp_path, tracker)
+
+    setup_project.setup("Trame", "TRAME", "trame", tracker_choice="devhub", dry_run=True)
+
+    out = capsys.readouterr().out
+    assert "devhub" in out and "TRAME" in out and CANONICAL_REPOSITORY in out
+    assert selected == ["devhub"]  # the explicit choice beats the host default
+    assert tracker.calls == []
+    assert registry.load() == {}
+    assert not (repo / ".foundry/tracker.json").exists()
+
+
+def test_dry_run_refuses_a_bound_checkout_in_one_sentence(monkeypatch, tmp_path):
+    tracker = ScriptedDevHubTracker([])
+    _repo_path, _selected = _devhub_setup_env(monkeypatch, tmp_path, tracker)
+    registry.register("devhub", "trame", "TRAME", "project-42", canonical_repo=CANONICAL_REPOSITORY)
+
+    with pytest.raises(SystemExit, match="Setup tracker refusé") as caught:
+        setup_project.setup("Trame", "TRAME", "trame", tracker_choice="devhub", dry_run=True)
+    assert "\n" not in str(caught.value)
+    assert tracker.calls == []
+
+
+def test_dry_run_refuses_an_unsupported_provider(monkeypatch, tmp_path):
+    _devhub_setup_env(monkeypatch, tmp_path, GitHubProjectsTracker())
+    with pytest.raises(SystemExit, match="ne prend pas en charge"):
+        setup_project.setup("Trame", "TRAME", "trame", tracker_choice="ghprojects", dry_run=True)
+    assert registry.load() == {}
+
+
+def _run_cli(*args, cwd=None):
+    import os
+    import sys
+    from pathlib import Path
+
+    tooling = Path(__file__).resolve().parents[1] / "tooling"
+    env = {**os.environ, "PYTHONPATH": str(tooling)}
+    return subprocess.run(
+        [sys.executable, "-m", "foundry.setup_project", *args],
+        cwd=cwd, env=env, capture_output=True, text=True,
+    )
+
+
+def test_cli_validates_tracker_and_documents_new_flags(tmp_path):
+    bad = _run_cli("N", "KEY", "repo", "--tracker", "jira", "--dry-run", cwd=tmp_path)
+    assert bad.returncode != 0 and "--tracker inconnu 'jira'" in bad.stderr
+    missing = _run_cli("N", "KEY", "repo", "--tracker", cwd=tmp_path)
+    assert missing.returncode != 0 and "--tracker" in missing.stderr
+    helped = _run_cli("--help", cwd=tmp_path)
+    assert helped.returncode == 0 and "--dry-run" in helped.stdout and "--tracker" in helped.stdout
+
+
+def test_insufficient_scope_on_resolution_names_the_probable_cause(monkeypatch, tmp_path):
+    from foundry.trackers.devhub import DevHubProjectScopeError
+
+    scope = DevHubTrackerError("GET", "/projects/resolve", 403, "insufficient_scope")
+    other = DevHubTrackerError("GET", "/projects/resolve", 403, "authority_boundary")
+
+    tracker = ScriptedDevHubTracker([scope])
+    with pytest.raises(DevHubProjectScopeError, match="jeton de service Foundry"):
+        tracker.verify_project_identity(Project(
+            key="TRAME", id="project-42", extra={"canonical_repo": CANONICAL_REPOSITORY},
+        ))
+    tracker = ScriptedDevHubTracker([other])
+    with pytest.raises(DevHubTrackerError, match="authority_boundary") as caught:
+        tracker.verify_project_identity(Project(
+            key="TRAME", id="project-42", extra={"canonical_repo": CANONICAL_REPOSITORY},
+        ))
+    assert not isinstance(caught.value, DevHubProjectScopeError)
+
+    # setup relays the typed cause, as it does for the governance refusal
+    repo = _repo(tmp_path, "acme", "trame")
+    tracker = ScriptedDevHubTracker([
+        DevHubTrackerError("GET", "/projects/resolve", 404, "project_not_found"),
+        PROJECT_RAW, PROJECT_RAW, scope,
+    ])
+    monkeypatch.setenv("FOUNDRY_TRACKER", "devhub")
+    monkeypatch.setattr(foundry, "tracker", lambda name=None: tracker)
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("FOUNDRY_DATA", str(tmp_path))
+    with pytest.raises(SystemExit, match="insufficient_scope"):
+        setup_project.setup("Trame", "TRAME", "trame")
+    assert registry.load() == {}
+
+
+def test_insufficient_scope_on_first_resolution_writes_nothing(monkeypatch, tmp_path):
+    # Project created by hand in the DevHub UI: the very first resolve answers 403.
+    repo = _repo(tmp_path, "acme", "trame")
+    scope = DevHubTrackerError("GET", "/projects/resolve", 403, "insufficient_scope")
+    tracker = ScriptedDevHubTracker([scope])
+    monkeypatch.setenv("FOUNDRY_TRACKER", "devhub")
+    monkeypatch.setattr(foundry, "tracker", lambda name=None: tracker)
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("FOUNDRY_DATA", str(tmp_path))
+    with pytest.raises(SystemExit, match="insufficient_scope") as caught:
+        setup_project.setup("Trame", "TRAME", "trame")
+    assert "registry bootstrap" in str(caught.value)
+    assert registry.load() == {}
+    assert not (repo / ".foundry" / "tracker.json").exists()
+
+
+def test_scope_error_is_relayed_by_bootstrap_and_registered_read_back(monkeypatch, tmp_path):
+    from foundry.trackers.devhub import DevHubProjectScopeError
+
+    repo = _repo(tmp_path, "acme", "trame")
+    scope = DevHubTrackerError("GET", "/projects/resolve", 403, "insufficient_scope")
+    tracker = ScriptedDevHubTracker([scope])
+    monkeypatch.setattr(foundry, "tracker", lambda name=None, cwd=None: tracker)
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("FOUNDRY_DATA", str(tmp_path))
+    with pytest.raises(ValueError, match="jeton de service Foundry") as caught:
+        registry.verify_existing_project(
+            "devhub", "trame", "TRAME", "project-42", canonical_repo=CANONICAL_REPOSITORY,
+        )
+    assert "insufficient_scope" in str(caught.value)
+
+    tracker = ScriptedDevHubTracker([scope])
+    registered = Project(
+        key="TRAME", id="project-42", extra={"canonical_repo": CANONICAL_REPOSITORY},
+    )
+    with pytest.raises(DevHubProjectScopeError):
+        tracker._read_back_registered(registered, "trame")
+
+
+def test_doctor_keeps_the_scope_error_message_whole():
+    from foundry import doctor
+    from foundry.trackers.devhub import DevHubProjectScopeError
+
+    error = DevHubProjectScopeError()
+    assert doctor._failure_detail(error, 10) == str(error)
+    assert doctor._failure_detail(ValueError("x" * 50), 10) == "x" * 10
