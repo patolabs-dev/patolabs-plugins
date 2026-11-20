@@ -291,15 +291,17 @@ class DevHubProjectScopeError(TrackerConflictError):
     """DevHub answered 403 `insufficient_scope` on the project resolution (PLP-384).
 
     The cause is deduced, not observed: a project created outside Foundry (for example in
-    the DevHub UI) carries no grant for Foundry's service token.
+    the DevHub UI) carries no grant for Foundry's service token, or the grant of an already
+    bound project was revoked (the registered read-back raises it too).
     """
 
     def __init__(self):
         super().__init__(
-            "DevHub a refusé la résolution du projet (403 insufficient_scope) ; cause probable "
-            "(déduite) : le projet a été créé hors Foundry et le jeton de service Foundry n'a "
-            "aucun droit dessus. Accorde l'accès du jeton de service Foundry à ce projet dans "
-            "DevHub, puis relance ; ou, une fois l'accès accordé, relie-le avec `registry bootstrap`"
+            "DevHub a refusé la résolution du projet (403 insufficient_scope) ; causes probables "
+            "(déduites) : le projet a été créé hors Foundry, ou l'accès accordé au jeton de service "
+            "Foundry sur ce projet a été retiré. Accorde (ou rétablis) l'accès du jeton de service "
+            "Foundry à ce projet dans DevHub, puis relance ; si le dépôt n'est pas encore lié, "
+            "relie-le ensuite avec `registry bootstrap`"
         )
 
 

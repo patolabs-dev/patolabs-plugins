@@ -663,3 +663,68 @@ def test_doctor_keeps_the_scope_error_message_whole():
     error = DevHubProjectScopeError()
     assert doctor._failure_detail(error, 10) == str(error)
     assert doctor._failure_detail(ValueError("x" * 50), 10) == "x" * 10
+
+
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_import_adrs_is_checked_before_any_write(monkeypatch, tmp_path, dry_run):
+    repo = _repo(tmp_path, "acme", "trame")
+    monkeypatch.setenv("FOUNDRY_DATA", str(tmp_path))
+    monkeypatch.chdir(repo)
+    adrs = tmp_path / "adrs"
+    adrs.mkdir()
+    (adrs / "TRAME-ADR-0002-b.md").write_text("# B\n")
+    (adrs / "TRAME-ADR-0004-d.md").write_text("# D\n")
+    kwargs = dict(tracker_choice="devhub", dry_run=dry_run)
+    with pytest.raises(SystemExit, match="non contiguë"):
+        setup_project.setup("Trame", "TRAME", "trame", str(adrs), **kwargs)
+    (adrs / "TRAME-ADR-0004-d.md").rename(adrs / "other.md")
+    with pytest.raises(SystemExit, match="sans identifiant"):
+        setup_project.setup("Trame", "TRAME", "trame", str(adrs), **kwargs)
+    with pytest.raises(SystemExit, match="n'est pas un dossier"):
+        setup_project.setup("Trame", "TRAME", "trame", str(tmp_path / "nope"), **kwargs)
+    assert registry.load() == {}
+
+
+def test_import_adrs_check_accepts_a_directory_not_starting_at_one(tmp_path):
+    adrs = tmp_path / "adrs"
+    adrs.mkdir()
+    (adrs / "TRAME-ADR-0003-c.md").write_text("# C\n")
+    (adrs / "TRAME-ADR-0004-d.md").write_text("# D\n")
+    setup_project.check_adr_dir("TRAME", str(adrs))
+    (adrs / "TRAME-ADR-0005-e.md").write_bytes(b"\xff\xfe")
+    with pytest.raises(SystemExit, match="illisible"):
+        setup_project.check_adr_dir("TRAME", str(adrs))
+
+
+def test_import_adrs_reads_utf8_whatever_the_locale(monkeypatch, tmp_path):
+    import builtins
+    from types import SimpleNamespace
+
+    adrs = tmp_path / "adrs"
+    adrs.mkdir()
+    (adrs / "TRAME-ADR-0001-a.md").write_text("# Décision\n", encoding="utf-8")
+
+    def latin1_default_open(*args, **kwargs):
+        kwargs.setdefault("encoding", "latin-1")
+        return builtins.open(*args, **kwargs)
+
+    monkeypatch.setattr(setup_project, "open", latin1_default_open, raising=False)
+    created = []
+
+    class Tracker:
+        def list_adrs(self, project):
+            return []
+
+        def create_adr(self, project, title, body, status):
+            created.append(title)
+            return SimpleNamespace(id=f"TRAME-ADR-{len(created):04d}")
+
+    setup_project.import_adrs(Tracker(), SimpleNamespace(key="TRAME"), str(adrs))
+    assert created == ["Décision"]
+
+
+def test_scope_error_message_covers_both_causes_and_remedies():
+    from foundry.trackers.devhub import DevHubProjectScopeError
+
+    text = str(DevHubProjectScopeError())
+    assert "créé hors Foundry" in text and "retiré" in text and "registry bootstrap" in text
