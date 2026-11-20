@@ -1500,8 +1500,8 @@ def rebind_repository_binding(
             _require_unique_checkout_provider(data, tracker, new, repo)
         except ValueError:
             raise ValueError(
-                f"rebind tracker refusé : une entrée active d'un autre fournisseur porte déjà "
-                f"{new} ou le nom {repo}. Rien n'a été écrit."
+                f"rebind tracker refusé : une entrée legacy d'un autre fournisseur porte déjà "
+                f"le nom {repo}. Rien n'a été écrit."
             ) from None
         if tracker == "ghprojects" and str(extras.get("owner", "")).casefold() != new.split("/")[1].casefold():
             raise ValueError(

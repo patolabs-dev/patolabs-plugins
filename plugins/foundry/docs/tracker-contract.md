@@ -843,10 +843,10 @@ owner is refused before the provider read (`registry.rebind_repository_binding`)
 does not handle an owner change. A checkout with no marker is refused with the step to
 restore `.foundry/tracker.json` from Git or from a rebound checkout, then run `rebind`
 again (with `--marker-only` when the registry is already rebound). On a rename the entry
-keeps its storage key (the old basename); an active entry of another provider on the new
-identity or basename is refused before any write (`_require_unique_checkout_provider`).
-It then saves the entry with its extra fields (`release_ids`, `preserve_issue_numbers`, …) under the new `canonical_repo` and
-republishes the marker with its activation unchanged, a migration keeping its manifest
+keeps its storage key (the old basename); a legacy entry of another provider on the new
+basename is refused before any write (`_require_unique_checkout_provider`). It then saves
+the entry with its extra fields (`release_ids`, `preserve_issue_numbers`, …) under the new
+`canonical_repo` and republishes the marker with its activation unchanged, a migration keeping its manifest
 digest. As for `update`, the registry is written first and the marker second, two
 atomic replacements, not one transaction. If the marker step is interrupted, or for another
 checkout whose marker still names the old identity, run `rebind ... --marker-only` there:
