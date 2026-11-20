@@ -287,6 +287,22 @@ class DevHubGovernanceModeError(TrackerConflictError):
         self.mode = mode
 
 
+class DevHubProjectScopeError(TrackerConflictError):
+    """DevHub answered 403 `insufficient_scope` on the project resolution (PLP-384).
+
+    The cause is deduced, not observed: a project created outside Foundry (for example in
+    the DevHub UI) carries no grant for Foundry's service token.
+    """
+
+    def __init__(self):
+        super().__init__(
+            "DevHub a refusé la résolution du projet (403 insufficient_scope) ; cause probable "
+            "(déduite) : le projet a été créé hors Foundry et le jeton de service Foundry n'a "
+            "aucun droit dessus. Accorde l'accès du jeton de service Foundry à ce projet dans "
+            "DevHub, ou laisse `setup_project` créer le projet"
+        )
+
+
 def _canonical_loopback(host: str) -> bool:
     """Return whether *host* is an unambiguous numeric loopback literal."""
     try:
@@ -992,9 +1008,7 @@ class DevHubTracker(Tracker):
             raise SystemExit(
                 f"Binding DevHub invalide pour '{repo}' : canonical_repo non canonique."
             ) from None
-        raw = self._application_req(
-            "GET", "/projects/resolve?" + urllib.parse.urlencode({"repo": canonical}),
-        )
+        raw = self._resolve_project_raw(canonical)
         remote = self._to_project(raw)
         if remote.key != registered.key or remote.id != registered.id:
             raise SystemExit(f"Binding DevHub contradictoire pour '{repo}' ; mutation refusée.")
@@ -1005,6 +1019,17 @@ class DevHubTracker(Tracker):
             if name in registered.extra and name not in extra:
                 extra[name] = registered.extra[name]
         return Project(key=remote.key, id=remote.id, extra=extra)
+
+    def _resolve_project_raw(self, canonical: str):
+        """``GET /projects/resolve``; a 403 `insufficient_scope` becomes its typed cause (PLP-384)."""
+        try:
+            return self._application_req(
+                "GET", "/projects/resolve?" + urllib.parse.urlencode({"repo": canonical}),
+            )
+        except DevHubTrackerError as error:
+            if error.status == 403 and error.code == "insufficient_scope":
+                raise DevHubProjectScopeError() from None
+            raise
 
     def verify_project_identity(self, project: Project) -> bool:
         """Read back the exact project before a binding is published (DHN-41, PAT-314).
@@ -1022,9 +1047,7 @@ class DevHubTracker(Tracker):
         except (TypeError, ValueError):
             return False
         try:
-            raw = self._application_req(
-                "GET", "/projects/resolve?" + urllib.parse.urlencode({"repo": canonical}),
-            )
+            raw = self._resolve_project_raw(canonical)
         except DevHubTrackerError as error:
             if error.status == 404:
                 return False

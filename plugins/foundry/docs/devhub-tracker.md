@@ -89,8 +89,14 @@ For a new project, run the provider-neutral setup command from the repository ch
 
 ```bash
 python3 tooling/foundry_cli.py setup_project "My Project" <TICKER> <repo-basename> \
-  [--import-adrs docs/adr]
+  [--import-adrs docs/adr] [--tracker <name>] [--dry-run]
 ```
+
+`--dry-run` runs the same local unbound proof and provisioning-support check, prints the
+provider, the key, the repo and the canonical origin identity, and writes nothing, locally
+or at DevHub; `--tracker <name>` names the provider instead of the `FOUNDRY_TRACKER` host
+default (`setup_project.py`). The `foundry:new-project` skill chains both with the marker
+PR and `doctor`.
 
 The DevHub capability reads and canonicalizes the checkout's `origin`, resolves an
 existing project by that identity, or creates a minimal project through the tracker API
@@ -109,6 +115,14 @@ checkout) is retired. To bind a project that was created outside the setup flow,
 checkout: it reads the exact project back (`verify_project_identity`, including the
 governance mode, "Governance mode") and publishes the entry and the marker only if both
 hold. `registry register` alone writes an entry without a marker, which fails closed.
+
+A project created by hand in the DevHub UI grants no right to Foundry's service token
+(deduced, not observed): the resolution read-back (`verify_project_identity`, hence
+`registry bootstrap` and `setup_project`, and the read-back of a registered binding,
+`_read_back_registered`) then fails with `403 insufficient_scope`. Foundry translates that
+answer into `DevHubProjectScopeError`, which names the probable cause and the two ways out:
+grant the Foundry service token access to the project in DevHub, or let `setup_project`
+create the project. Any other 403 keeps its generic message.
 
 An existing DevHub registry entry that carries `canonical_repo` but has no marker (for
 example one written by `registry register` before PAT-323) is classified, deduced from

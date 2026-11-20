@@ -5,6 +5,8 @@ only provider-neutral orchestration, registry persistence and optional ADR repli
 
 CLI: python3 -m foundry.setup_project "<Project Name>" <SHORT> <repo-basename> \
          [--import-adrs <dir>]    # replicate repo bootstrap ADRs into the KB
+         [--tracker <name>]       # explicit provider instead of the host default
+         [--dry-run]              # same local proofs, prints the plan, writes nothing
 """
 from __future__ import annotations
 
@@ -91,7 +93,7 @@ def import_adrs(tracker, project, adr_dir):
     print(f"📚 import ADR : {created} créé(s), {skipped} ignoré(s) (déjà en KB).")
 
 
-def setup(name, short, repo, adr_dir=None):
+def setup(name, short, repo, adr_dir=None, tracker_choice=None, dry_run=False):
     # Prove locally that this checkout is genuinely new before even selecting or
     # constructing a provider.  Legacy bindings and interrupted V1 publications must
     # be upgraded/recovered, never shadowed through an adverse host-global setting.
@@ -112,7 +114,7 @@ def setup(name, short, repo, adr_dir=None):
 
     # Setup is the one boundary that intentionally selects the configured provider:
     # a fresh repository has no binding yet, while normal factory calls stay closed.
-    provider = foundry.config.tracker_name()
+    provider = tracker_choice or foundry.config.tracker_name()
     # The administrative setup publishes a legacy basename entry. It must never
     # replace a foreign canonical slot that the unbound preflight correctly ignored.
     if any(
@@ -142,6 +144,15 @@ def setup(name, short, repo, adr_dir=None):
                 "dépôt courant avant tout provisionnement."
             ) from None
 
+    if dry_run:
+        # PLP-384 preflight: every local proof above ran; nothing is written here or at the provider.
+        print(
+            f"dry-run : fournisseur {tracker.name}, clé {short}, dépôt {repo}"
+            + (f", identité canonique {canonical_repository}" if canonical_repository else "")
+            + " ; rien n'est écrit."
+        )
+        return
+
     project = tracker.provision_project(name, short, canonical_repository)
     if project.key != short:
         raise RuntimeError(
@@ -150,12 +161,12 @@ def setup(name, short, repo, adr_dir=None):
     if tracker.name in registry._V1_TRACKERS and "canonical_repo" in project.extra:
         # A canonical entry without its marker fails closed (PAT-323): publish both.
         # Same read-back as `registry bootstrap`: exact identity, governance mode (PAT-321).
-        from foundry.trackers.devhub import DevHubGovernanceModeError
+        from foundry.trackers.devhub import DevHubGovernanceModeError, DevHubProjectScopeError
 
         try:
             verified = tracker.verify_project_identity(project)
-        except DevHubGovernanceModeError as exc:
-            # Only this typed DevHub refusal (PAT-321) names its cause; any other error,
+        except (DevHubGovernanceModeError, DevHubProjectScopeError) as exc:
+            # Only these typed DevHub refusals (PAT-321, PLP-384) name their cause; any other error,
             # a TrackerConflictError included, stays generic, as in
             # `registry.verify_existing_project` (PLP-14).
             raise SystemExit(f"Setup tracker refusé : {exc}") from None
@@ -183,20 +194,37 @@ def setup(name, short, repo, adr_dir=None):
     print(f"✅ setup {short} terminé.")
 
 
+_USAGE = ('usage: setup_project "<Name>" <SHORT> <repo> [--import-adrs <dir>] '
+          '[--tracker <name>] [--dry-run]')
+
+
+def _take_value(argv, flag):
+    if flag not in argv:
+        return None
+    i = argv.index(flag)
+    if i + 1 >= len(argv):
+        raise SystemExit(f"usage: {flag} <value>")
+    value = argv[i + 1]
+    del argv[i:i + 2]
+    return value
+
+
 if __name__ == "__main__":
     argv = sys.argv[1:]
     # PAT-286: `-h`/`--help` anywhere prints the usage and writes nothing (it would
     # otherwise be taken as a project name, short key or repository).
     if any(a in ("-h", "--help") for a in argv):
-        print('usage: setup_project "<Name>" <SHORT> <repo> [--import-adrs <dir>]')
+        print(_USAGE)
         raise SystemExit(0)
-    adr_dir = None
-    if "--import-adrs" in argv:
-        i = argv.index("--import-adrs")
-        if i + 1 >= len(argv):
-            raise SystemExit("usage: --import-adrs <dir>")
-        adr_dir = argv[i + 1]
-        del argv[i:i + 2]
+    adr_dir = _take_value(argv, "--import-adrs")
+    tracker_choice = _take_value(argv, "--tracker")
+    if tracker_choice is not None and tracker_choice not in registry._V1_TRACKERS:
+        raise SystemExit(
+            f"--tracker inconnu '{tracker_choice}' : {', '.join(sorted(registry._V1_TRACKERS))}"
+        )
+    dry_run = "--dry-run" in argv
+    if dry_run:
+        argv.remove("--dry-run")
     if len(argv) != 3:
-        raise SystemExit('usage: setup_project "<Name>" <SHORT> <repo> [--import-adrs <dir>]')
-    setup(argv[0], argv[1], argv[2], adr_dir)
+        raise SystemExit(_USAGE)
+    setup(argv[0], argv[1], argv[2], adr_dir, tracker_choice, dry_run)

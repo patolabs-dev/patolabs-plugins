@@ -438,6 +438,7 @@ Skills keep one shared implementation. Use `/foundry:<skill>` in Claude Code and
 | `foundry:intake` | new idea → issue / refine / ADR / rejected-by-ADR |
 | `foundry:groom` · `foundry:blockers` | backlog health · what's stuck |
 | `foundry:adr` · `foundry:doctor` | record decisions · check wiring |
+| `foundry:new-project` | start a fresh repository under Foundry: `setup_project --dry-run` preflight, confirmation, provisioning, marker PR, `doctor` |
 
 The 0.8.0 merge gate can consume a structured reviewer proof when tracker AC remain
 unchecked. `routing record-review-proof` binds ordered AC outcomes and the quality
@@ -758,8 +759,15 @@ never branches on a concrete provider.
 
 ```
 python3 tooling/foundry_cli.py setup_project "My Project" MYKEY <repo-basename> \
-    [--import-adrs docs/adr]
+    [--import-adrs docs/adr] [--tracker <name>] [--dry-run]
 ```
+`foundry:new-project` (`/foundry:new-project`, `$foundry:new-project` in Codex) chains this
+command with its preflight, the marker PR and `doctor`. `--dry-run` runs the same local
+proofs and the provisioning-support check, prints the provider, the key, the repo and the
+canonical origin identity when the provider requires it, and writes nothing, locally or at
+the provider (`setup_project.py`, `setup(..., dry_run=True)`). `--tracker <name>` selects the
+provider explicitly (one of `registry._V1_TRACKERS`, for both modes); without it the
+provider is `FOUNDRY_TRACKER`, whose default is `youtrack`.
 Asks the configured Tracker to create or recover its project, registers the normalized
 result, and optionally replicates the repo's bootstrap ADRs into the tracker KB. YouTrack
 preserves its Foundry field-vocabulary setup. DevHub discovers the credential-free
