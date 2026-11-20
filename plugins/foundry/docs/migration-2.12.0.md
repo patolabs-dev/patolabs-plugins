@@ -14,11 +14,13 @@ read and no `add_argument` is added under `tooling/` (read from the diff between
 `foundry-v2.11.1` and this candidate). The new options `--dry-run`, `--tracker` and
 `--marker-only` are read by hand in `setup_project.py` and `registry.py`, not by
 `add_argument`. `registry rebind` rewrites an existing registry entry (`_save`) and the
-checkout's marker (`_publish_marker`) and writes no other file
-([registry.py](../tooling/foundry/registry.py), `rebind_repository_binding`; read from the
-code, not run). Outside `tooling/`, the same diff touches only READMEs, changelog fragments,
-docs, skills, tests and this repository's own marker `.foundry/tracker.json`: no
-configuration key changes.
+checkout's marker (`_publish_marker`) ([registry.py](../tooling/foundry/registry.py),
+`rebind_repository_binding`); it takes `_cutover_lock`, which
+creates the data directory and its `.registry-cutover.lock` when they are absent (read from
+the code, not run). Outside `tooling/`, the PRs merged since that tag touch only READMEs,
+changelog fragments, docs, skills, tests and this repository's own marker
+`.foundry/tracker.json`; this release PR adds the manifests, `CHANGELOG.md` and a comment in
+`scripts/ci_plan.py`: no configuration key changes.
 
 ## What changes for a user
 
@@ -31,13 +33,15 @@ configuration key changes.
   are in the [cleanup skill](../skills/cleanup/SKILL.md) and the
   [README](../README.md). Invoke it as `/foundry:cleanup` (Claude Code) or `$foundry:cleanup`
   (Codex).
-- **New verb `registry rebind` (PLP-385, PLP-386).**
-  `registry rebind <tracker> <old-repository> <new-repository> [--marker-only]` is handled in
+- **New verb `registry rebind` (PLP-385, PLP-386).** `registry rebind <tracker>
+  <old-repository> <new-repository> [--marker-only]` is handled in
   [registry.py](../tooling/foundry/registry.py) (`rebind_repository_binding`). Its refusals,
-  all raised before any write, are the ones of the CHANGELOG section: a GitHub Projects
-  transfer to another owner, a rename colliding with a legacy entry of another provider, and a
-  checkout with no marker (its message gives the steps). A provider that does not carry the
-  new identity raises `ProjectIdentityMismatchError`. The rule per provider is in
+  all raised before the registry or the marker is written, are the ones of the CHANGELOG
+  section: a GitHub Projects transfer to another owner, a rename colliding with a legacy
+  entry of another provider, and a checkout with no marker (its message gives the steps).
+  When the provider does not carry the new identity, `rebind` refuses with the transfer steps
+  and writes neither (the `ProjectIdentityMismatchError` of `verify_existing_project` is
+  turned into that message). The rule per provider is in
   [tracker-contract.md](tracker-contract.md) (paragraph `rebind`) and the steps in the
   [doctor skill](../skills/doctor/SKILL.md).
 - **New skill `foundry:new-project` and `setup_project` options (PLP-384, PLP-387).**
