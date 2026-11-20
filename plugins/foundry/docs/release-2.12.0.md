@@ -24,10 +24,13 @@ before (PLP-384). What each means for a user is in
 
 The `2.12.0` section of the [CHANGELOG](../CHANGELOG.md) contains PLP-389, PLP-386, PLP-385,
 PLP-384, PLP-382 and PLP-365, assembled byte-for-byte by
-[`assemble`](../scripts/changelog_assemble.py). This preparation removes those six fragments
-and leaves `Unreleased` empty. PLP-387 has no fragment: it amended the PLP-384 fragment, which
-carries its `--import-adrs` check (`check_adr_dir` in
-[setup_project.py](../tooling/foundry/setup_project.py)).
+[`assemble`](../scripts/changelog_assemble.py); after assembly, the PLP-386 entry was
+reworded by hand ("before any write or provider read" became "before any provider read and
+before the registry or the marker is written", because `_cutover_lock` in
+[registry.py](../tooling/foundry/registry.py) may create the data directory and its lock file
+first). This preparation removes those six fragments and leaves `Unreleased` empty. PLP-387
+has no fragment: it amended the PLP-384 fragment, which carries its `--import-adrs` check
+(`check_adr_dir` in [setup_project.py](../tooling/foundry/setup_project.py)).
 
 | Issue | Packaged artifact | Behaviour and evidence source |
 | --- | --- | --- |
@@ -56,7 +59,7 @@ The changelog section and these release pages are frozen by `freeze_entry` in
 | Touched artifact | Status |
 | --- | --- |
 | Both manifest versions | Updated from `2.11.1` to `2.12.0`; no other manifest field changed |
-| Dated changelog and the six fragments | Updated: byte-identical entries assembled into `2.12.0 — 2026-11-20`; fragments removed |
+| Dated changelog and the six fragments | Updated: entries assembled byte-for-byte into `2.12.0 — 2026-11-20`, then the PLP-386 entry reworded (see above); fragments removed |
 | Release note and migration guide | New: this page and [migration-2.12.0.md](migration-2.12.0.md) |
 | Root and Foundry READMEs | Updated: source-candidate status, version, release/migration pointers and release-version list |
 | `scripts/ci_plan.py` release-version comment | Updated: `2.11.0` and `2.11.1` marked published and tagged, `2.12.0` added; executable code unchanged |
