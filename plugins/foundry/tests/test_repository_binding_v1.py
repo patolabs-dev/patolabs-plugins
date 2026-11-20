@@ -1354,7 +1354,7 @@ def test_rebind_rename_keeps_storage_key_and_refuses_legacy_collision(
     data = registry.load()
     data["linear"] = {"renamed": {"key": "L", "id": "u"}}
     registry._save(data)
-    with pytest.raises(ValueError, match="ambigu entre providers"):
+    with pytest.raises(ValueError, match="autre fournisseur porte déjà.*Rien n.a été écrit"):
         registry.rebind_repository_binding("youtrack", _OLD, new, cwd=str(repo))
     assert registry.load() == data and seen == []
     del data["linear"]

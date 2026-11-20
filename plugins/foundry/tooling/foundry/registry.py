@@ -1461,8 +1461,9 @@ def rebind_repository_binding(
         if marker is None:
             raise ValueError(
                 "rebind tracker refusé : ce checkout n'a pas de marqueur tracker. Marche à "
-                "suivre : copiez .foundry/tracker.json depuis un checkout déjà relié, puis "
-                "relancez 'registry rebind ... --marker-only'. Rien n'a été écrit."
+                "suivre : restaurez .foundry/tracker.json depuis Git ou depuis un checkout "
+                "déjà relié, puis relancez 'registry rebind' (avec --marker-only si le "
+                "registre est déjà relié). Rien n'a été écrit."
             )
         if marker["tracker"] != tracker or marker["repository"] not in {old, new}:
             raise ValueError("rebind tracker refusé : marqueur étranger à cette liaison")
@@ -1495,7 +1496,13 @@ def rebind_repository_binding(
         extras = {n: v for n, v in current.items() if n not in {"key", "id", "canonical_repo"}}
         # The storage key keeps the old basename on a rename; a legacy entry of another
         # provider on the new basename must be refused here, before any write.
-        _require_unique_checkout_provider(data, tracker, new, repo)
+        try:
+            _require_unique_checkout_provider(data, tracker, new, repo)
+        except ValueError:
+            raise ValueError(
+                f"rebind tracker refusé : une entrée active d'un autre fournisseur porte déjà "
+                f"{new} ou le nom {repo}. Rien n'a été écrit."
+            ) from None
         if tracker == "ghprojects" and str(extras.get("owner", "")).casefold() != new.split("/")[1].casefold():
             raise ValueError(
                 "rebind tracker refusé : le changement de propriétaire d'un projet GitHub "
