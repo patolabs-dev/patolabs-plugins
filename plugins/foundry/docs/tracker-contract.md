@@ -847,8 +847,8 @@ keeps its storage key (the old basename); a legacy entry of another provider on 
 basename is refused before any write (`_require_unique_checkout_provider`). `rebind` then
 saves the entry with its extra fields (`release_ids`, `preserve_issue_numbers`, …) under
 the new `canonical_repo` and republishes the marker with its activation unchanged, a
-migration keeping its manifest digest. As for `update`, the registry is written first and the marker second, two
-atomic replacements, not one transaction. If the marker step is interrupted, or for another
+migration keeping its manifest digest. As for `update`, the registry is written first and
+the marker second, two atomic replacements, not one transaction. If the marker step is interrupted, or for another
 checkout whose marker still names the old identity, run `rebind ... --marker-only` there:
 it requires the entry already rebound, makes the same provider read-back, and never writes
 the registry. Every refusal happens before any write. The command is the same for Claude
