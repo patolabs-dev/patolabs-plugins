@@ -615,3 +615,51 @@ def test_insufficient_scope_on_resolution_names_the_probable_cause(monkeypatch, 
     with pytest.raises(SystemExit, match="insufficient_scope"):
         setup_project.setup("Trame", "TRAME", "trame")
     assert registry.load() == {}
+
+
+def test_insufficient_scope_on_first_resolution_writes_nothing(monkeypatch, tmp_path):
+    # Project created by hand in the DevHub UI: the very first resolve answers 403.
+    repo = _repo(tmp_path, "acme", "trame")
+    scope = DevHubTrackerError("GET", "/projects/resolve", 403, "insufficient_scope")
+    tracker = ScriptedDevHubTracker([scope])
+    monkeypatch.setenv("FOUNDRY_TRACKER", "devhub")
+    monkeypatch.setattr(foundry, "tracker", lambda name=None: tracker)
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("FOUNDRY_DATA", str(tmp_path))
+    with pytest.raises(SystemExit, match="insufficient_scope") as caught:
+        setup_project.setup("Trame", "TRAME", "trame")
+    assert "registry bootstrap" in str(caught.value)
+    assert registry.load() == {}
+    assert not (repo / ".foundry" / "tracker.json").exists()
+
+
+def test_scope_error_is_relayed_by_bootstrap_and_registered_read_back(monkeypatch, tmp_path):
+    from foundry.trackers.devhub import DevHubProjectScopeError
+
+    repo = _repo(tmp_path, "acme", "trame")
+    scope = DevHubTrackerError("GET", "/projects/resolve", 403, "insufficient_scope")
+    tracker = ScriptedDevHubTracker([scope])
+    monkeypatch.setattr(foundry, "tracker", lambda name=None, cwd=None: tracker)
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("FOUNDRY_DATA", str(tmp_path))
+    with pytest.raises(ValueError, match="jeton de service Foundry") as caught:
+        registry.verify_existing_project(
+            "devhub", "trame", "TRAME", "project-42", canonical_repo=CANONICAL_REPOSITORY,
+        )
+    assert "insufficient_scope" in str(caught.value)
+
+    tracker = ScriptedDevHubTracker([scope])
+    registered = Project(
+        key="TRAME", id="project-42", extra={"canonical_repo": CANONICAL_REPOSITORY},
+    )
+    with pytest.raises(DevHubProjectScopeError):
+        tracker._read_back_registered(registered, "trame")
+
+
+def test_doctor_keeps_the_scope_error_message_whole():
+    from foundry import doctor
+    from foundry.trackers.devhub import DevHubProjectScopeError
+
+    error = DevHubProjectScopeError()
+    assert doctor._failure_detail(error, 10) == str(error)
+    assert doctor._failure_detail(ValueError("x" * 50), 10) == "x" * 10

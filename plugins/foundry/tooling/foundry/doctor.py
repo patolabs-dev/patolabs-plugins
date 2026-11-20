@@ -72,6 +72,17 @@ def hook_python_diagnostic(*, runner=subprocess.run, which=shutil.which):
             "detail": f"{path or '?'} Python {shown} ({source}){moved}; minimum {minimum}"}
 
 
+def _failure_detail(exc, limit):
+    """Truncate *exc* to *limit* characters, except the typed DevHub scope error (PLP-384).
+
+    Its cause and steps are the message; cutting them would hide the way out.
+    """
+    from foundry.trackers.devhub import DevHubProjectScopeError
+
+    text = str(exc)
+    return text if isinstance(exc, DevHubProjectScopeError) else text[:limit]
+
+
 def registered_project_diagnostic(tracker, project):
     """Read one registry project without weakening checkout authority.
 
@@ -582,9 +593,9 @@ def main(argv=None):
                     diagnostic["detail"],
                 )
             except Exception as ex:
-                check(f"  {key} ({repos})", False, str(ex)[:70])
+                check(f"  {key} ({repos})", False, _failure_detail(ex, 70))
     except (SystemExit, Exception) as e:
-        check("Tracker", False, str(e)[:80])
+        check("Tracker", False, _failure_detail(e, 80))
 
     # code-host
     try:
@@ -601,7 +612,7 @@ def main(argv=None):
         p = tr.resolve_checkout_project()
         check("Repo courant → projet", True, f"{base} → {p.key}")
     except (SystemExit, Exception) as e:
-        check("Repo courant → projet", False, str(e)[:90])
+        check("Repo courant → projet", False, _failure_detail(e, 90))
 
 
 if __name__ == "__main__":

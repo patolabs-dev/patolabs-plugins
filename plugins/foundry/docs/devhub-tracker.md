@@ -117,12 +117,12 @@ governance mode, "Governance mode") and publishes the entry and the marker only 
 hold. `registry register` alone writes an entry without a marker, which fails closed.
 
 A project created by hand in the DevHub UI grants no right to Foundry's service token
-(deduced, not observed): the resolution read-back (`verify_project_identity`, hence
-`registry bootstrap` and `setup_project`, and the read-back of a registered binding,
+(deduced, not observed): the project resolution (`provision_project`, `verify_project_identity`,
+hence `registry bootstrap` and `setup_project`, and the read-back of a registered binding,
 `_read_back_registered`) then fails with `403 insufficient_scope`. Foundry translates that
-answer into `DevHubProjectScopeError`, which names the probable cause and the two ways out:
-grant the Foundry service token access to the project in DevHub, or let `setup_project`
-create the project. Any other 403 keeps its generic message.
+answer into `DevHubProjectScopeError`, which names the probable cause and the way out:
+grant the Foundry service token access to the project in DevHub, then re-run, or bind the
+project with `registry bootstrap` once granted. Any other 403 keeps its generic message.
 
 An existing DevHub registry entry that carries `canonical_repo` but has no marker (for
 example one written by `registry register` before PAT-323) is classified, deduced from

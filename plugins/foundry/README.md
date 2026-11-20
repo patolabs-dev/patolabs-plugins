@@ -761,15 +761,8 @@ never branches on a concrete provider.
 python3 tooling/foundry_cli.py setup_project "My Project" MYKEY <repo-basename> \
     [--import-adrs docs/adr] [--tracker <name>] [--dry-run]
 ```
-`foundry:new-project` (`/foundry:new-project`, `$foundry:new-project` in Codex) chains this
-command with its preflight, the marker PR and `doctor`. `--dry-run` runs the same local
-proofs and the provisioning-support check, prints the provider, the key, the repo and the
-canonical origin identity when the provider requires it, and writes nothing, locally or at
-the provider (`setup_project.py`, `setup(..., dry_run=True)`). `--tracker <name>` selects the
-provider explicitly (one of `registry._V1_TRACKERS`, for both modes); without it the
-provider is `FOUNDRY_TRACKER`, whose default is `youtrack`.
-Asks the configured Tracker to create or recover its project, registers the normalized
-result, and optionally replicates the repo's bootstrap ADRs into the tracker KB. YouTrack
+Asks the selected Tracker (`--tracker`, else the configured one) to create or recover its
+project, registers the normalized result, and optionally replicates the repo's bootstrap ADRs into the tracker KB. YouTrack
 preserves its Foundry field-vocabulary setup. DevHub discovers the credential-free
 canonical identity from the current checkout's `origin`, creates the minimal
 repository-bound project, and records that identity without a manual REST step. A
@@ -780,6 +773,15 @@ tombstone. Existing state is recovered with `registry upgrade`, `registry update
 original cutover path; it is never shadowed by a global provider setting. Retrying a
 genuinely new setup after an interruption recovers the same provider project and
 replaces the same single registry entry rather than creating duplicates.
+
+`foundry:new-project` (`/foundry:new-project`, `$foundry:new-project` in Codex) chains this
+command with its preflight, the marker PR and `doctor`. `--dry-run` runs the same local
+proofs and the provisioning-support check, prints the provider, the key, the repo and the
+canonical origin identity when the provider requires it, and writes nothing, locally or at
+the provider (`setup_project.py`, `setup(..., dry_run=True)`). `--tracker <name>` selects the
+provider explicitly (one of `registry._V1_TRACKERS`, for both modes); without it the
+provider is `FOUNDRY_TRACKER`, whose default is `youtrack`.
+
 For a legacy basename binding without `canonical_repo`, an additional local alias
 can reuse the existing project without provisioning another tracker project:
 

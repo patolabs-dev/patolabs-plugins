@@ -27,7 +27,7 @@ provider may not be the wanted one, the provider; never assume the host default.
 python3 "$(test -n "${CLAUDE_PLUGIN_ROOT}" && printf %s "${CLAUDE_PLUGIN_ROOT}" || printf %s "<foundry-root>")/tooling/foundry_cli.py" setup_project "<Name>" <KEY> <repo> --dry-run [--tracker <name>]
 ```
 It runs the local proofs of `setup_project` (no marker, no canonical or legacy registry
-entry under any provider, no key collision) and the provisioning-support check, then prints
+entry under any provider, no registry entry already named after the repository) and the provisioning-support check, then prints
 the provider, the key, the repo and, when the provider requires it, the canonical origin
 identity; it writes nothing, locally or at the provider (`tooling/foundry/setup_project.py`,
 `setup(..., dry_run=True)`). A refusal means the checkout is already linked or the provider
@@ -45,13 +45,15 @@ Same arguments as step 1, without `--dry-run`:
 ```bash
 python3 "$(test -n "${CLAUDE_PLUGIN_ROOT}" && printf %s "${CLAUDE_PLUGIN_ROOT}" || printf %s "<foundry-root>")/tooling/foundry_cli.py" setup_project "<Name>" <KEY> <repo> [--tracker <name>] [--import-adrs <dir>]
 ```
-After a partial failure (interruption, network), re-run the same command: it recovers the
-same provider project and replaces the same registry entry, never a duplicate
-(`docs/devhub-tracker.md`, "Project binding and cutover"). A DevHub
-`403 insufficient_scope` on the read-back means, as a deduced cause, that the project was
-created outside Foundry and the service token has no grant on it: grant the Foundry service
-token access to the project in DevHub, or let `setup_project` create it; report this to the
-user instead of retrying.
+After a partial failure (interruption, network) before the registry write, re-run the same
+command: it recovers the same provider project, never a duplicate (`docs/devhub-tracker.md`,
+"Project binding and cutover"). After the registry write (marker write failed, or
+`--import-adrs` failed), `setup_project` refuses the re-run because the entry exists
+(`setup_project.py`): go to `foundry:doctor`. A DevHub `403 insufficient_scope` on the
+project resolution means, as a deduced cause, that the project was created outside Foundry
+and the service token has no grant on it: grant the Foundry service token access to the
+project in DevHub, then re-run (or bind with `registry bootstrap` once granted); report this
+to the user instead of retrying.
 
 ## 4. Marker and PR
 For a provider whose project carries `canonical_repo` (DevHub), `setup_project` also wrote
@@ -72,7 +74,7 @@ git add .foundry/tracker.json
 git commit -m "chore: bind the repository to its tracker project"
 python3 "$(test -n "${CLAUDE_PLUGIN_ROOT}" && printf %s "${CLAUDE_PLUGIN_ROOT}" || printf %s "<foundry-root>")/tooling/foundry_cli.py" issue openpr <ISSUE-ID> --summary-stdin < /path/to/summary.md
 ```
-`<ISSUE-ID>` is the id printed by `create-issue`. The merge stays with `foundry:merge-pr`
+Write a short summary to a scratch file first (`/path/to/summary.md`). `<ISSUE-ID>` is the id printed by `create-issue`. The merge stays with `foundry:merge-pr`
 and the user; do not merge here.
 
 ## 5. Check

@@ -299,7 +299,7 @@ class DevHubProjectScopeError(TrackerConflictError):
             "DevHub a refusé la résolution du projet (403 insufficient_scope) ; cause probable "
             "(déduite) : le projet a été créé hors Foundry et le jeton de service Foundry n'a "
             "aucun droit dessus. Accorde l'accès du jeton de service Foundry à ce projet dans "
-            "DevHub, ou laisse `setup_project` créer le projet"
+            "DevHub, puis relance ; ou, une fois l'accès accordé, relie-le avec `registry bootstrap`"
         )
 
 
@@ -942,11 +942,8 @@ class DevHubTracker(Tracker):
         except ValueError:
             raise ValueError("remote origin canonique invalide pour DevHubTracker") from None
 
-        resolve_path = "/projects/resolve?" + urllib.parse.urlencode(
-            {"repo": canonical_repository}
-        )
         try:
-            raw = self._application_req("GET", resolve_path)
+            raw = self._resolve_project_raw(canonical_repository)
         except DevHubTrackerError as error:
             if error.status != 404:
                 raise
@@ -966,7 +963,7 @@ class DevHubTracker(Tracker):
             # Bind the returned native id to the repository resolver before the
             # caller persists anything locally. A retry after interruption starts
             # with this same read and therefore cannot create a second project.
-            raw = self._application_req("GET", resolve_path)
+            raw = self._resolve_project_raw(canonical_repository)
 
         project = self._to_project(raw)
         if project.key != key:
