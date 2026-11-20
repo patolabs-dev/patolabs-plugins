@@ -126,7 +126,6 @@ def test_propose_leaves_linked_worktree_indexes_untouched(repo):
 def test_worktree_with_failing_status_is_not_proposed(repo, monkeypatch):
     work, clean, _, prs = repo
     real = cleanup._git_ok
-
     seen = []
 
     def fake(cwd, *args):
