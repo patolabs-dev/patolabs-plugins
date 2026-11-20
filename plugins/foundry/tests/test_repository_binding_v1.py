@@ -1103,3 +1103,183 @@ def test_common_selection_refuses_symlink_parent_without_marker(isolated, state)
     (repo / ".foundry").symlink_to(target, target_is_directory=True)
     with pytest.raises(ValueError, match="marqueur tracker.*invalide"):
         registry.repository_tracker_binding(str(repo))
+
+
+# --- PLP-385: registry rebind -------------------------------------------------
+
+_OLD = "github.com/old-owner/app"
+_NEW = "github.com/new-owner/app"
+_MANIFEST = "sha256:" + "ab" * 32
+
+
+def _transferred(isolated, monkeypatch, verdicts=None):
+    """A migrated V1 binding on the old identity, then the remote moves to the new one."""
+    repo = _repo(isolated, "old-owner", "app")
+    registry.bootstrap_repository_binding(
+        "youtrack", "app", "APP", "0-1", cwd=str(repo), ms_bundle="keep",
+        release_ids={"1.0": "r1"},
+    )
+    entry = registry.load()["youtrack"]["app"]
+    registry._publish_marker(repo, registry._v2_marker_payload(
+        "youtrack", _OLD, entry, activation_kind="migration",
+        migration_manifest_digest=_MANIFEST,
+    ))
+    subprocess.run(
+        ["git", "-C", str(repo), "remote", "set-url", "origin",
+         "https://github.com/new-owner/app.git"], check=True,
+    )
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("YOUTRACK_URL", "https://youtrack.example.invalid")
+    monkeypatch.setenv("YOUTRACK_TOKEN", "synthetic-token-never-sent")
+    seen = []
+
+    def verify(self, project):
+        seen.append(project)
+        return True if verdicts is None else verdicts
+
+    monkeypatch.setattr(YouTrackTracker, "verify_project_identity", verify)
+    return repo, seen
+
+
+def test_rebind_moves_entry_and_marker_keeping_extras_and_migration(
+    isolated, monkeypatch, capsys,
+):
+    repo, seen = _transferred(isolated, monkeypatch)
+    registry.main(["rebind", "youtrack", _OLD, _NEW])
+    out = json.loads(capsys.readouterr().out)
+    assert out["repository"] == _NEW and out["activation"] == "migration"
+    assert seen[0].extra["canonical_repo"] == _NEW
+    assert registry.load()["youtrack"]["app"] == {
+        "key": "APP", "id": "0-1", "canonical_repo": _NEW,
+        "ms_bundle": "keep", "release_ids": {"1.0": "r1"},
+    }
+    marker = json.loads((repo / ".foundry/tracker.json").read_text())
+    assert marker["repository"] == _NEW
+    assert marker["activation"] == {"kind": "migration", "manifest_digest": _MANIFEST}
+    binding = registry.repository_tracker_binding(str(repo))
+    assert binding.migration_manifest_digest == _MANIFEST
+
+
+def test_rebind_refuses_provider_mismatch_with_steps_and_writes_nothing(
+    isolated, monkeypatch,
+):
+    repo, _seen = _transferred(isolated, monkeypatch, verdicts=False)
+    before = registry.load()
+    marker = (repo / ".foundry/tracker.json").read_text()
+    with pytest.raises(SystemExit, match="Marche à suivre.*Rien n'a été écrit"):
+        registry.main(["rebind", "youtrack", _OLD, _NEW])
+    assert registry.load() == before
+    assert (repo / ".foundry/tracker.json").read_text() == marker
+
+
+@pytest.mark.parametrize("old, new, message", [
+    ("github.com/other/app", _NEW, "marqueur étranger"),
+    (_OLD, "github.com/new-owner/elsewhere", "remote origin du checkout"),
+    (_NEW, _NEW, "identités identiques"),
+])
+def test_rebind_refuses_unknown_old_entry_or_foreign_checkout(
+    isolated, monkeypatch, old, new, message,
+):
+    repo, seen = _transferred(isolated, monkeypatch)
+    before = registry.load()
+    with pytest.raises(ValueError, match=message):
+        registry.rebind_repository_binding("youtrack", old, new, cwd=str(repo))
+    assert registry.load() == before and seen == []
+
+
+def test_rebind_refuses_ambiguous_old_entries_and_existing_new_entry(
+    isolated, monkeypatch,
+):
+    repo, seen = _transferred(isolated, monkeypatch)
+    data = registry.load()
+    data["youtrack"]["twin"] = {**data["youtrack"]["app"], "ms_bundle": "other"}
+    registry._save(data)
+    with pytest.raises(ValueError, match="ambiguë"):
+        registry.rebind_repository_binding("youtrack", _OLD, _NEW, cwd=str(repo))
+    data["youtrack"]["twin"] = {**data["youtrack"]["app"], "canonical_repo": _NEW}
+    registry._save(data)
+    with pytest.raises(ValueError, match="--marker-only"):
+        registry.rebind_repository_binding("youtrack", _OLD, _NEW, cwd=str(repo))
+    assert seen == []
+
+
+def test_rebind_marker_only_republishes_another_checkout_without_registry_write(
+    isolated, monkeypatch,
+):
+    repo, _seen = _transferred(isolated, monkeypatch)
+    registry.rebind_repository_binding("youtrack", _OLD, _NEW, cwd=str(repo))
+    # A second checkout still carries the stale marker of the old identity.
+    second = _repo(isolated, "new-owner", "app-second", remote="https://github.com/new-owner/app.git")
+    stale = isolated / "stale.json"
+    stale.write_text(json.dumps(registry._v2_marker_payload(
+        "youtrack", _OLD, {"key": "APP", "id": "0-1", "canonical_repo": _OLD},
+        activation_kind="migration", migration_manifest_digest=_MANIFEST,
+    )))
+    (second / ".foundry").mkdir()
+    (second / ".foundry/tracker.json").write_text(stale.read_text())
+    registry_file = registry.path()
+    before = open(registry_file).read()
+    calls = []
+    monkeypatch.setattr(registry, "_save", lambda data: calls.append(data))
+    monkeypatch.setattr(
+        registry.os, "replace",
+        lambda src, dst, _r=registry.os.replace: _r(src, dst),
+    )
+
+    registry.rebind_repository_binding(
+        "youtrack", _OLD, _NEW, cwd=str(second), marker_only=True,
+    )
+    assert calls == [] and open(registry_file).read() == before
+    marker = json.loads((second / ".foundry/tracker.json").read_text())
+    assert marker["repository"] == _NEW
+    assert marker["activation"]["manifest_digest"] == _MANIFEST
+    assert registry.repository_tracker_binding(str(second)).repository == _NEW
+
+
+def test_rebind_cli_usage_and_help_write_nothing(isolated, capsys):
+    with pytest.raises(SystemExit, match="rebind <tracker>"):
+        registry.main(["rebind", "youtrack", _OLD])
+    with pytest.raises(SystemExit, match="rebind <tracker>"):
+        registry.main(["rebind", "youtrack", _OLD, _NEW, "--bogus"])
+    assert registry.load() == {}
+
+
+def _with_other_provider_entry(archived):
+    data = registry.load()
+    tombstone = {"key": "L", "id": "u", "canonical_repo": _OLD}
+    if archived:
+        tombstone["archive"] = True
+    data["linear"] = {"app": tombstone}
+    registry._save(data)
+    return tombstone
+
+
+def test_rebind_ignores_archived_other_provider_entry_and_leaves_it_unchanged(
+    isolated, monkeypatch,
+):
+    repo, _seen = _transferred(isolated, monkeypatch)
+    tombstone = _with_other_provider_entry(archived=True)
+    registry.rebind_repository_binding("youtrack", _OLD, _NEW, cwd=str(repo))
+    assert registry.load()["linear"]["app"] == tombstone
+    assert registry.load()["youtrack"]["app"]["canonical_repo"] == _NEW
+
+
+def test_rebind_marker_only_succeeds_beside_archived_other_provider_entry(
+    isolated, monkeypatch,
+):
+    repo, _seen = _transferred(isolated, monkeypatch)
+    registry.rebind_repository_binding("youtrack", _OLD, _NEW, cwd=str(repo))
+    tombstone = _with_other_provider_entry(archived=True)
+    registry.rebind_repository_binding(
+        "youtrack", _OLD, _NEW, cwd=str(repo), marker_only=True,
+    )
+    assert registry.load()["linear"]["app"] == tombstone
+
+
+def test_rebind_still_refuses_active_other_provider_entry(isolated, monkeypatch):
+    repo, seen = _transferred(isolated, monkeypatch)
+    _with_other_provider_entry(archived=False)
+    before = registry.load()
+    with pytest.raises(ValueError, match="ambiguë"):
+        registry.rebind_repository_binding("youtrack", _OLD, _NEW, cwd=str(repo))
+    assert registry.load() == before and seen == []

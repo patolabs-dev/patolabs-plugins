@@ -790,6 +790,7 @@ foundry_cli.py registry upgrade <tracker> <legacy-repo>
 foundry_cli.py registry selection [--require-v1]
 foundry_cli.py registry update <tracker> <repo> <KEY> <project-id> \
   <expected-configuration-sha256> [complete k=v …]
+foundry_cli.py registry rebind <tracker> <old-repository> <new-repository> [--marker-only]
 ```
 
 `bootstrap` derives the canonical identity from the checkout rather than from an
@@ -823,6 +824,24 @@ and publishing a marker. A concurrent change is refused without publishing it as
 does not alter another alias or any archive tombstone. New bindings use marker schema 2
 with `activation.kind=bootstrap`; upgraded bindings use `upgrade`. Neither carries a
 migration-manifest digest. Existing schema-1 migration markers remain readable.
+
+`rebind` (PLP-385, `registry.rebind_repository_binding`) relinks a transferred or renamed
+repository to its existing project. Run it in a checkout whose `origin` already is
+`<new-repository>`, with `<old-repository>` the `canonical_repo` of the current entry
+(canonical form `host/owner/name`). Under the publication lock it requires exactly one
+active entry for the old identity (aliases byte-identical), none for the new one, and no
+active entry of another provider on either identity (archived entries are ignored and left
+untouched), and a marker of that tracker and project. It reads the project back from the provider
+with the new identity (the read-only identity probe `verify_existing_project` also used by
+`update`); a mismatch refuses with the steps to follow. It then saves the entry with its
+extra fields (`release_ids`, `preserve_issue_numbers`, …) under the new `canonical_repo` and
+republishes the marker with its activation unchanged, a migration keeping its manifest
+digest. As for `update`, the registry is written first and the marker second, two
+atomic replacements, not one transaction. If the marker step is interrupted, or for another
+checkout whose marker still names the old identity, run `rebind ... --marker-only` there:
+it requires the entry already rebound, makes the same provider read-back, and never writes
+the registry. Every refusal happens before any write. The command is the same for Claude
+Code and Codex.
 
 Every adapter resolves again through the strict shared checkout selection before
 activation, including Linear; a factory created before an interrupted update cannot

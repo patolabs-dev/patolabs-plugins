@@ -62,6 +62,10 @@ python3 "$(test -n "${CLAUDE_PLUGIN_ROOT}" && printf %s "${CLAUDE_PLUGIN_ROOT}" 
 python3 "$(test -n "${CLAUDE_PLUGIN_ROOT}" && printf %s "${CLAUDE_PLUGIN_ROOT}" || printf %s "<foundry-root>")/tooling/foundry_cli.py" registry alias youtrack <old-repo> <new-repo>
 ```
 
+- Red after a repository transfer or rename to a new canonical identity, with the project
+  unchanged at the provider → in a checkout whose `origin` is already the new remote, run
+  `registry rebind <tracker> <old-repository> <new-repository>` (add `--marker-only` in each
+  further checkout); see `docs/tracker-contract.md`, paragraph `rebind`.
 - Red for a new checkout targeting an existing provider project → use
   `registry bootstrap <tracker> <repo> <KEY> <project-id> [k=v …]`;
   it verifies provider coordinates before publishing a canonical binding and marker.
