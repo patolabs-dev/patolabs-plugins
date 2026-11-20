@@ -120,7 +120,7 @@ A project created by hand in the DevHub UI grants no right to Foundry's service 
 (deduced, not observed): the project resolution (`provision_project`, `verify_project_identity`,
 hence `registry bootstrap` and `setup_project`, and the read-back of a registered binding,
 `_read_back_registered`) then fails with `403 insufficient_scope`. Foundry translates that
-answer into `DevHubProjectScopeError`, which names the probable cause and the way out:
+answer into `DevHubProjectScopeError`, which names the probable causes and the way out:
 grant the Foundry service token access to the project in DevHub, then re-run, or bind the
 project with `registry bootstrap` once granted; the message also names a revoked grant,
 since the read-back of an already bound checkout raises it too. It subclasses
@@ -128,8 +128,11 @@ since the read-back of an already bound checkout raises it too. It subclasses
 now enters the conflict branches (`issue.py`; `query.py` returns `status: "conflict"`)
 instead of surfacing as a `RuntimeError`. `setup_project` exits with it before any local
 write; the provider project may already exist when the 403 comes from the second resolve
-of `provision_project`. `setup_project --import-adrs` is checked read-only before any write
-(`check_adr_dir`). Any other 403 keeps its generic message.
+of `provision_project`. Any other 403 keeps its generic message.
+
+`setup_project --import-adrs` (dry run or not) is checked read-only before any write
+(`check_adr_dir`): directory, `<KEY>-ADR-NNNN` filenames, no gap in the directory's
+numbering; where the numbering starts is checked by `import_adrs` against the KB.
 
 An existing DevHub registry entry that carries `canonical_repo` but has no marker (for
 example one written by `registry register` before PAT-323) is classified, deduced from

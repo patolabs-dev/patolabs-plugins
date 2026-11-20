@@ -665,23 +665,32 @@ def test_doctor_keeps_the_scope_error_message_whole():
     assert doctor._failure_detail(ValueError("x" * 50), 10) == "x" * 10
 
 
-def test_dry_run_checks_import_adrs_read_only(monkeypatch, tmp_path):
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_import_adrs_is_checked_before_any_write(monkeypatch, tmp_path, dry_run):
     repo = _repo(tmp_path, "acme", "trame")
     monkeypatch.setenv("FOUNDRY_DATA", str(tmp_path))
     monkeypatch.chdir(repo)
     adrs = tmp_path / "adrs"
     adrs.mkdir()
-    (adrs / "TRAME-ADR-0001-a.md").write_text("# A\n")
-    (adrs / "TRAME-ADR-0003-c.md").write_text("# C\n")
-    kwargs = dict(tracker_choice="devhub", dry_run=True)
+    (adrs / "TRAME-ADR-0002-b.md").write_text("# B\n")
+    (adrs / "TRAME-ADR-0004-d.md").write_text("# D\n")
+    kwargs = dict(tracker_choice="devhub", dry_run=dry_run)
     with pytest.raises(SystemExit, match="non contiguë"):
         setup_project.setup("Trame", "TRAME", "trame", str(adrs), **kwargs)
-    (adrs / "TRAME-ADR-0003-c.md").rename(adrs / "other.md")
+    (adrs / "TRAME-ADR-0004-d.md").rename(adrs / "other.md")
     with pytest.raises(SystemExit, match="sans identifiant"):
         setup_project.setup("Trame", "TRAME", "trame", str(adrs), **kwargs)
     with pytest.raises(SystemExit, match="n'est pas un dossier"):
         setup_project.setup("Trame", "TRAME", "trame", str(tmp_path / "nope"), **kwargs)
     assert registry.load() == {}
+
+
+def test_import_adrs_check_accepts_a_directory_not_starting_at_one(tmp_path):
+    adrs = tmp_path / "adrs"
+    adrs.mkdir()
+    (adrs / "TRAME-ADR-0003-c.md").write_text("# C\n")
+    (adrs / "TRAME-ADR-0004-d.md").write_text("# D\n")
+    setup_project.check_adr_dir("TRAME", str(adrs))
 
 
 def test_scope_error_message_covers_both_causes_and_remedies():

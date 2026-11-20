@@ -94,8 +94,10 @@ def import_adrs(tracker, project, adr_dir):
 
 
 def check_adr_dir(short, adr_dir):
-    """Read-only preflight of ``--import-adrs`` (PLP-387): what ``import_adrs`` rejects
-    without the tracker (directory, filename ids, parsing, contiguous numbering from 1)."""
+    """Read-only preflight of ``--import-adrs`` (PLP-387): the ``import_adrs`` checks that
+    need no tracker (directory, ``<KEY>-ADR-NNNN`` filenames, no gap between the
+    directory's own numbers). Where the numbering starts is checked by ``import_adrs``
+    against the ADRs already in the KB."""
     if not os.path.isdir(adr_dir):
         raise SystemExit(f"Setup tracker refusé : --import-adrs '{adr_dir}' n'est pas un dossier.")
     numbers = []
@@ -107,14 +109,9 @@ def check_adr_dir(short, adr_dir):
             raise SystemExit(
                 f"Setup tracker refusé : fichier ADR sans identifiant {short}-ADR-NNNN : {fn}"
             )
-        with open(os.path.join(adr_dir, fn)) as f:
-            _parse_adr_md(f.read(), fn)
         numbers.append(int(match.group(1)))
-    if numbers != list(range(1, len(numbers) + 1)):
-        raise SystemExit(
-            "Setup tracker refusé : numérotation ADR non contiguë depuis "
-            f"{short}-ADR-0001 dans {adr_dir}."
-        )
+    if numbers and numbers != list(range(numbers[0], numbers[0] + len(numbers))):
+        raise SystemExit(f"Setup tracker refusé : numérotation ADR non contiguë dans {adr_dir}.")
 
 
 def setup(name, short, repo, adr_dir=None, tracker_choice=None, dry_run=False):
