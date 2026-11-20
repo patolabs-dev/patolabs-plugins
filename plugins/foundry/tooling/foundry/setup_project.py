@@ -98,9 +98,10 @@ def check_adr_dir(short, adr_dir):
     ``<KEY>-ADR-NNNN`` filenames, each file readable as UTF-8 text (the encoding
     ``import_adrs`` also reads with), and no gap between the
     directory's own numbers. Where the numbering starts is checked by ``import_adrs``
-    against the ADRs already in the KB. Stricter than ``import_adrs`` on one point: a gap
-    is refused even when the missing numbers are already in the KB, a case only a provider
-    project recovered by ``provision_project`` that already holds ADRs can have."""
+    against the ADRs already in the KB. Stricter than ``import_adrs`` when the KB already
+    holds some of the directory's numbers: a gap or a repeated number is refused even then,
+    a case only a provider project recovered by ``provision_project`` that already holds
+    ADRs can have."""
     if not os.path.isdir(adr_dir):
         raise SystemExit(f"Setup tracker refusé : --import-adrs '{adr_dir}' n'est pas un dossier.")
     numbers = []

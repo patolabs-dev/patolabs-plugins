@@ -696,6 +696,33 @@ def test_import_adrs_check_accepts_a_directory_not_starting_at_one(tmp_path):
         setup_project.check_adr_dir("TRAME", str(adrs))
 
 
+def test_import_adrs_reads_utf8_whatever_the_locale(monkeypatch, tmp_path):
+    import builtins
+    from types import SimpleNamespace
+
+    adrs = tmp_path / "adrs"
+    adrs.mkdir()
+    (adrs / "TRAME-ADR-0001-a.md").write_text("# Décision\n", encoding="utf-8")
+
+    def latin1_default_open(*args, **kwargs):
+        kwargs.setdefault("encoding", "latin-1")
+        return builtins.open(*args, **kwargs)
+
+    monkeypatch.setattr(setup_project, "open", latin1_default_open, raising=False)
+    created = []
+
+    class Tracker:
+        def list_adrs(self, project):
+            return []
+
+        def create_adr(self, project, title, body, status):
+            created.append(title)
+            return SimpleNamespace(id=f"TRAME-ADR-{len(created):04d}")
+
+    setup_project.import_adrs(Tracker(), SimpleNamespace(key="TRAME"), str(adrs))
+    assert created == ["Décision"]
+
+
 def test_scope_error_message_covers_both_causes_and_remedies():
     from foundry.trackers.devhub import DevHubProjectScopeError
 
