@@ -122,7 +122,14 @@ hence `registry bootstrap` and `setup_project`, and the read-back of a registere
 `_read_back_registered`) then fails with `403 insufficient_scope`. Foundry translates that
 answer into `DevHubProjectScopeError`, which names the probable cause and the way out:
 grant the Foundry service token access to the project in DevHub, then re-run, or bind the
-project with `registry bootstrap` once granted. Any other 403 keeps its generic message.
+project with `registry bootstrap` once granted; the message also names a revoked grant,
+since the read-back of an already bound checkout raises it too. It subclasses
+`TrackerConflictError`, as `DevHubGovernanceModeError` does: on a bound checkout this 403
+now enters the conflict branches (`issue.py`; `query.py` returns `status: "conflict"`)
+instead of surfacing as a `RuntimeError`. `setup_project` exits with it before any local
+write; the provider project may already exist when the 403 comes from the second resolve
+of `provision_project`. `setup_project --import-adrs` is checked read-only before any write
+(`check_adr_dir`). Any other 403 keeps its generic message.
 
 An existing DevHub registry entry that carries `canonical_repo` but has no marker (for
 example one written by `registry register` before PAT-323) is classified, deduced from

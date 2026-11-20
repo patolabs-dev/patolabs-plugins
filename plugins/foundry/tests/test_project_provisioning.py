@@ -663,3 +663,29 @@ def test_doctor_keeps_the_scope_error_message_whole():
     error = DevHubProjectScopeError()
     assert doctor._failure_detail(error, 10) == str(error)
     assert doctor._failure_detail(ValueError("x" * 50), 10) == "x" * 10
+
+
+def test_dry_run_checks_import_adrs_read_only(monkeypatch, tmp_path):
+    repo = _repo(tmp_path, "acme", "trame")
+    monkeypatch.setenv("FOUNDRY_DATA", str(tmp_path))
+    monkeypatch.chdir(repo)
+    adrs = tmp_path / "adrs"
+    adrs.mkdir()
+    (adrs / "TRAME-ADR-0001-a.md").write_text("# A\n")
+    (adrs / "TRAME-ADR-0003-c.md").write_text("# C\n")
+    kwargs = dict(tracker_choice="devhub", dry_run=True)
+    with pytest.raises(SystemExit, match="non contiguë"):
+        setup_project.setup("Trame", "TRAME", "trame", str(adrs), **kwargs)
+    (adrs / "TRAME-ADR-0003-c.md").rename(adrs / "other.md")
+    with pytest.raises(SystemExit, match="sans identifiant"):
+        setup_project.setup("Trame", "TRAME", "trame", str(adrs), **kwargs)
+    with pytest.raises(SystemExit, match="n'est pas un dossier"):
+        setup_project.setup("Trame", "TRAME", "trame", str(tmp_path / "nope"), **kwargs)
+    assert registry.load() == {}
+
+
+def test_scope_error_message_covers_both_causes_and_remedies():
+    from foundry.trackers.devhub import DevHubProjectScopeError
+
+    text = str(DevHubProjectScopeError())
+    assert "créé hors Foundry" in text and "retiré" in text and "registry bootstrap" in text

@@ -6,7 +6,7 @@ only provider-neutral orchestration, registry persistence and optional ADR repli
 CLI: python3 -m foundry.setup_project "<Project Name>" <SHORT> <repo-basename> \
          [--import-adrs <dir>]    # replicate repo bootstrap ADRs into the KB
          [--tracker <name>]       # explicit provider instead of the host default
-         [--dry-run]              # same local proofs, prints the plan, writes nothing
+         [--dry-run]              # same local proofs and --import-adrs check, writes nothing
 """
 from __future__ import annotations
 
@@ -93,6 +93,30 @@ def import_adrs(tracker, project, adr_dir):
     print(f"📚 import ADR : {created} créé(s), {skipped} ignoré(s) (déjà en KB).")
 
 
+def check_adr_dir(short, adr_dir):
+    """Read-only preflight of ``--import-adrs`` (PLP-387): what ``import_adrs`` rejects
+    without the tracker (directory, filename ids, parsing, contiguous numbering from 1)."""
+    if not os.path.isdir(adr_dir):
+        raise SystemExit(f"Setup tracker refusé : --import-adrs '{adr_dir}' n'est pas un dossier.")
+    numbers = []
+    for fn in sorted(os.listdir(adr_dir)):
+        if not fn.endswith(".md"):
+            continue
+        match = re.match(rf"^{re.escape(short)}-ADR-(\d{{4}})(?:-|\.md$)", fn)
+        if not match:
+            raise SystemExit(
+                f"Setup tracker refusé : fichier ADR sans identifiant {short}-ADR-NNNN : {fn}"
+            )
+        with open(os.path.join(adr_dir, fn)) as f:
+            _parse_adr_md(f.read(), fn)
+        numbers.append(int(match.group(1)))
+    if numbers != list(range(1, len(numbers) + 1)):
+        raise SystemExit(
+            "Setup tracker refusé : numérotation ADR non contiguë depuis "
+            f"{short}-ADR-0001 dans {adr_dir}."
+        )
+
+
 def setup(name, short, repo, adr_dir=None, tracker_choice=None, dry_run=False):
     # Prove locally that this checkout is genuinely new before even selecting or
     # constructing a provider.  Legacy bindings and interrupted V1 publications must
@@ -111,6 +135,9 @@ def setup(name, short, repo, adr_dir=None, tracker_choice=None, dry_run=False):
         raise SystemExit(
             "Setup tracker refusé : nom de dépôt incompatible avec le checkout."
         )
+
+    if adr_dir:
+        check_adr_dir(short, adr_dir)
 
     # Setup is the one boundary that intentionally selects the configured provider:
     # a fresh repository has no binding yet, while normal factory calls stay closed.
@@ -158,7 +185,8 @@ def setup(name, short, repo, adr_dir=None, tracker_choice=None, dry_run=False):
     try:
         project = tracker.provision_project(name, short, canonical_repository)
     except DevHubProjectScopeError as exc:
-        # PLP-384: a project created outside Foundry; nothing was written yet.
+        # PLP-384: no local write yet; the provider may already hold the project (POST
+        # /projects, then a second resolve answering 403): only local state is untouched.
         raise SystemExit(f"Setup tracker refusé : {exc}") from None
     if project.key != short:
         raise RuntimeError(
