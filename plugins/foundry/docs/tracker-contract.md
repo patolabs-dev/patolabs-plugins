@@ -848,11 +848,11 @@ basename is refused before any write (`_require_unique_checkout_provider`). `reb
 saves the entry with its extra fields (`release_ids`, `preserve_issue_numbers`, …) under
 the new `canonical_repo` and republishes the marker with its activation unchanged, a
 migration keeping its manifest digest. As for `update`, the registry is written first and
-the marker second, two atomic replacements, not one transaction. If the marker step is interrupted, or for another
-checkout whose marker still names the old identity, run `rebind ... --marker-only` there:
-it requires the entry already rebound, makes the same provider read-back, and never writes
-the registry. Every refusal happens before any write. The command is the same for Claude
-Code and Codex.
+the marker second, two atomic replacements, not one transaction. If the marker step is
+interrupted, or for another checkout whose marker still names the old identity, run
+`rebind ... --marker-only` there: it requires the entry already rebound, makes the same
+provider read-back, and never writes the registry. Every refusal happens before any write.
+The command is the same for Claude Code and Codex.
 
 Every adapter resolves again through the strict shared checkout selection before
 activation, including Linear; a factory created before an interrupted update cannot
