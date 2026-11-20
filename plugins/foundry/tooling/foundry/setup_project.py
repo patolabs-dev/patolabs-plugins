@@ -51,7 +51,7 @@ def import_adrs(tracker, project, adr_dir):
     for fn in sorted(os.listdir(adr_dir)):
         if not fn.endswith(".md"):
             continue
-        with open(os.path.join(adr_dir, fn)) as f:
+        with open(os.path.join(adr_dir, fn), encoding="utf-8") as f:
             title, status, body = _parse_adr_md(f.read(), fn)
         match = re.match(rf"^({re.escape(project.key)}-ADR-\d{{4}})(?:-|\.md$)", fn)
         expected_id = match.group(1) if match else None
@@ -95,11 +95,12 @@ def import_adrs(tracker, project, adr_dir):
 
 def check_adr_dir(short, adr_dir):
     """Read-only preflight of ``--import-adrs`` (PLP-387), before any write: the directory,
-    ``<KEY>-ADR-NNNN`` filenames, each file readable as text, and no gap between the
+    ``<KEY>-ADR-NNNN`` filenames, each file readable as UTF-8 text (the encoding
+    ``import_adrs`` also reads with), and no gap between the
     directory's own numbers. Where the numbering starts is checked by ``import_adrs``
     against the ADRs already in the KB. Stricter than ``import_adrs`` on one point: a gap
-    is refused even when the missing numbers are already in the KB, a case a new project
-    (the only one ``setup`` accepts) cannot have."""
+    is refused even when the missing numbers are already in the KB, a case only a provider
+    project recovered by ``provision_project`` that already holds ADRs can have."""
     if not os.path.isdir(adr_dir):
         raise SystemExit(f"Setup tracker refusé : --import-adrs '{adr_dir}' n'est pas un dossier.")
     numbers = []
