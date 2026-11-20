@@ -1172,6 +1172,26 @@ def test_rebind_refuses_provider_mismatch_with_steps_and_writes_nothing(
     assert (repo / ".foundry/tracker.json").read_text() == marker
 
 
+@pytest.mark.parametrize("cause", [
+    "coordonnées du projet 'youtrack' indisponibles à la relecture",
+    "mode de gouvernance refusé",
+])
+def test_rebind_keeps_the_cause_of_a_non_identity_provider_refusal(
+    isolated, monkeypatch, cause,
+):
+    repo, _seen = _transferred(isolated, monkeypatch)
+    before = registry.load()
+
+    def refuse(*_args, **_kwargs):
+        raise ValueError(cause)
+
+    monkeypatch.setattr(registry, "verify_existing_project", refuse)
+    with pytest.raises(ValueError) as refused:
+        registry.rebind_repository_binding("youtrack", _OLD, _NEW, cwd=str(repo))
+    assert str(refused.value) == cause and "Marche à suivre" not in str(refused.value)
+    assert registry.load() == before
+
+
 @pytest.mark.parametrize("old, new, message", [
     ("github.com/other/app", _NEW, "marqueur étranger"),
     (_OLD, "github.com/new-owner/elsewhere", "remote origin du checkout"),

@@ -1492,7 +1492,11 @@ def rebind_repository_binding(
                 tracker, repo, current["key"], current["id"], cwd=str(root),
                 _recovery_probe=True, **extras,
             )
-        except ValueError:
+        except ValueError as exc:
+            # Only a provider that does not carry the new identity gets the transfer
+            # steps; a typed governance refusal or an unavailable provider keeps its cause.
+            if not str(exc).endswith("étrangères ou contradictoires"):
+                raise
             raise ValueError(
                 f"rebind tracker refusé : le projet {current['key']} du fournisseur '{tracker}' "
                 f"ne porte pas l'identité {new}. Marche à suivre : terminez le transfert chez "

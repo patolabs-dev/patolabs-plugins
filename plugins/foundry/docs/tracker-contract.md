@@ -833,7 +833,12 @@ active entry for the old identity (aliases byte-identical), none for the new one
 active entry of another provider on either identity (archived entries are ignored and left
 untouched), and a marker of that tracker and project. It reads the project back from the provider
 with the new identity (the read-only identity probe `verify_existing_project` also used by
-`update`); a mismatch refuses with the steps to follow. It then saves the entry with its
+`update`); a mismatch refuses with the steps to follow. Only DevHub
+(`DevHubTracker.verify_project_identity`) and GitHub Projects
+(`GitHubProjectsTracker.verify_project_identity`) check the repository identity there;
+YouTrack and Linear store none and check only the project coordinates, so on them a rebind
+to any repository passes this read. A governance refusal or an unavailable provider keeps
+its own message. It then saves the entry with its
 extra fields (`release_ids`, `preserve_issue_numbers`, …) under the new `canonical_repo` and
 republishes the marker with its activation unchanged, a migration keeping its manifest
 digest. As for `update`, the registry is written first and the marker second, two
